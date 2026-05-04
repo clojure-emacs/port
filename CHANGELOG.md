@@ -9,6 +9,9 @@ Initial prototype.
   streaming output, and a separate tool socket carries helper-command
   requests with reliable request/response correlation via a small
   `port.tooling/-eval` bootstrap.
+- Eldoc support: arglists for the function whose call surrounds point,
+  resolved on the tool socket and delivered asynchronously via
+  `eldoc-documentation-functions`.
 - Single-buffer REPL that renders `:ret`, `:out`, `:err`, and `:tap`
   messages.
 - Interactive eval commands: last-sexp, defun-at-point, region, buffer.

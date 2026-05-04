@@ -44,6 +44,7 @@
 (require 'port-tooling)
 (require 'port-repl)
 (require 'port-eval)
+(require 'port-eldoc)
 (require 'port-mode)
 
 (defgroup port nil

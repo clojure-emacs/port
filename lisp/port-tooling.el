@@ -74,6 +74,17 @@ VAL-STRING is the printed result map from `port.tooling/-eval'."
       (car (port-client--read val-string 0))
     (error nil)))
 
+(defun port-tooling-decode-val (val)
+  "Decode VAL — a printed Clojure value as it appears in a result map's `:val'.
+For a printed string returns the unwrapped string; for `nil', a number,
+keyword, or map returns the corresponding Elisp value.  Returns VAL
+unchanged if it can't be parsed."
+  (if (stringp val)
+      (condition-case _
+          (car (port-client--read val 0))
+        (error val))
+    val))
+
 (provide 'port-tooling)
 
 ;;; port-tooling.el ends here
