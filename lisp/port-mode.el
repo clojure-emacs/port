@@ -22,6 +22,7 @@
 (require 'port-repl)
 (require 'port-eldoc)
 (require 'port-completion)
+(require 'port-xref)
 
 (defun port--symbol-at-point ()
   "Return the symbol at point as a string, or nil."
@@ -153,6 +154,7 @@ on the REPL session (defines vars, switches namespace)."
     (define-key map (kbd "C-c C-m") #'port-macroexpand-1)
     (define-key map (kbd "C-c M-n") #'port-set-ns)
     (define-key map (kbd "C-c C-z") #'port-switch-to-repl)
+    (define-key map (kbd "M-.")     #'port-find-definition)
     map)
   "Keymap for `port-mode'.")
 

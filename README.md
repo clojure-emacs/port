@@ -74,6 +74,7 @@ buffer pops up.
 | `C-c C-m` | `port-macroexpand-1`          |
 | `C-c M-n` | `port-set-ns`                 |
 | `C-c C-z` | `port-switch-to-repl`         |
+| `M-.`     | `port-find-definition`        |
 
 All output, including evaluation results from source buffers, is written to
 the REPL buffer.

@@ -14,6 +14,9 @@ Initial prototype.
   `eldoc-documentation-functions`.
 - `completion-at-point` for symbols visible in the buffer's namespace,
   driven by a synchronous tool-socket request that walks `ns-map'.
+- `port-find-definition` (bound to `M-.`) jumps to the source of the
+  symbol at point using `:file` / `:line` from var metadata. Files
+  inside jars are not yet handled.
 - Single-buffer REPL that renders `:ret`, `:out`, `:err`, and `:tap`
   messages.
 - Interactive eval commands: last-sexp, defun-at-point, region, buffer.
