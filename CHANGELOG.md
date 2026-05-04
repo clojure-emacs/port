@@ -12,6 +12,8 @@ Initial prototype.
 - Eldoc support: arglists for the function whose call surrounds point,
   resolved on the tool socket and delivered asynchronously via
   `eldoc-documentation-functions`.
+- `completion-at-point` for symbols visible in the buffer's namespace,
+  driven by a synchronous tool-socket request that walks `ns-map'.
 - Single-buffer REPL that renders `:ret`, `:out`, `:err`, and `:tap`
   messages.
 - Interactive eval commands: last-sexp, defun-at-point, region, buffer.

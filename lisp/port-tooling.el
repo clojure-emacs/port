@@ -58,6 +58,21 @@ when `:ok'), `:ex' (printed Throwable->map when `:err'), `:out',
     (port-session-register-callback session id callback)
     (port-client-send (port-session-tool-conn session) wrapped)))
 
+(defun port-tooling-call-sync (session form-string &optional timeout)
+  "Like `port-tooling-call' but block until the response arrives.
+TIMEOUT defaults to 2 seconds.  Returns the result alist, or nil on
+timeout.  Suitable for use from a `completion-at-point-functions'
+member, where the surrounding API is synchronous."
+  (let* ((done nil)
+         (result nil)
+         (deadline (+ (float-time) (or timeout 2.0)))
+         (proc (port-client-process (port-session-tool-conn session))))
+    (port-tooling-call session form-string
+                       (lambda (r) (setq result r) (setq done t)))
+    (while (and (not done) (< (float-time) deadline))
+      (accept-process-output proc 0.05))
+    (and done result)))
+
 (defun port-tooling--dispatch (session msg)
   "Look at MSG arriving on SESSION's tool socket and fire matching callback."
   (when (eq (alist-get :tag msg) :ret)

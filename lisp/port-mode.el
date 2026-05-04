@@ -21,6 +21,7 @@
 (require 'port-eval)
 (require 'port-repl)
 (require 'port-eldoc)
+(require 'port-completion)
 
 (defun port--symbol-at-point ()
   "Return the symbol at point as a string, or nil."
@@ -162,9 +163,13 @@ on the REPL session (defines vars, switches namespace)."
   :lighter " Port"
   :keymap port-mode-map
   :group 'port
-  (if port-mode
-      (port-eldoc-setup)
-    (port-eldoc-teardown)))
+  (cond
+   (port-mode
+    (port-eldoc-setup)
+    (port-completion-setup))
+   (t
+    (port-eldoc-teardown)
+    (port-completion-teardown))))
 
 (provide 'port-mode)
 
