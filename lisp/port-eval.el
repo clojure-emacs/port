@@ -16,18 +16,15 @@
 ;;; Code:
 
 (require 'port-client)
+(require 'port-session)
 (require 'port-repl)
 
-(defun port-eval--connection ()
-  "Return the active connection, or signal a user error."
-  (or port-client-default-connection
-      (user-error "Port: not connected; run `M-x port-connect' first")))
-
 (defun port-eval-string (code)
-  "Send CODE (a string) to the active prepl.
+  "Send CODE (a string) to the active prepl user socket.
 The code is rendered into the REPL buffer as if typed there."
-  (let* ((conn (port-eval--connection))
-         (repl (port-client-repl-buffer conn)))
+  (let* ((session (port-current-session))
+         (conn    (port-session-user-conn session))
+         (repl    (port-session-repl-buffer session)))
     (when (and repl (buffer-live-p repl))
       (with-current-buffer repl
         (let ((inhibit-read-only t))

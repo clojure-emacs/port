@@ -31,9 +31,6 @@
   current-ns        ; tracked from :ret messages
   handler)          ; function called with each parsed message map
 
-(defvar port-client-default-connection nil
-  "The most recently established connection.")
-
 (defun port-client-connect (host port)
   "Open a prepl connection to HOST:PORT.
 Returns the `port-client' struct."
@@ -57,7 +54,6 @@ Returns the `port-client' struct."
       (process-put proc 'port-connection conn)
       (set-process-filter proc #'port-client--filter)
       (set-process-sentinel proc #'port-client--sentinel)
-      (setq port-client-default-connection conn)
       conn)))
 
 (defun port-client-disconnect (conn)
@@ -65,9 +61,7 @@ Returns the `port-client' struct."
   (when (process-live-p (port-client-process conn))
     (delete-process (port-client-process conn)))
   (when (buffer-live-p (port-client-buffer conn))
-    (kill-buffer (port-client-buffer conn)))
-  (when (eq port-client-default-connection conn)
-    (setq port-client-default-connection nil)))
+    (kill-buffer (port-client-buffer conn))))
 
 (defun port-client-send (conn form-string)
   "Send FORM-STRING (a Clojure form as text) to CONN.

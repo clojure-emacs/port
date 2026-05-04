@@ -18,9 +18,13 @@
 
 (require 'cl-lib)
 (require 'port-client)
+(require 'port-session)
+
+(defvar-local port--session nil
+  "The `port-session' associated with this REPL buffer.")
 
 (defvar-local port--connection nil
-  "The `port-client' associated with this REPL buffer.")
+  "The user `port-client' connection associated with this REPL buffer.")
 
 (defvar-local port-repl-input-start-marker nil
   "Marker at the start of the editable input area.")
@@ -77,14 +81,16 @@
   (when (fboundp 'clojure-mode-syntax-table)
     (set-syntax-table (clojure-mode-syntax-table))))
 
-(defun port-repl-create-buffer (conn)
-  "Create and return a fresh REPL buffer for CONN."
-  (let* ((host (port-client-host conn))
-         (port (port-client-port conn))
+(defun port-repl-create-buffer (session)
+  "Create and return a fresh REPL buffer for SESSION."
+  (let* ((host (port-session-host session))
+         (port (port-session-port session))
+         (conn (port-session-user-conn session))
          (name (format "*port-repl: %s:%d*" host port))
          (buf  (get-buffer-create name)))
     (with-current-buffer buf
       (port-repl-mode)
+      (setq port--session session)
       (setq port--connection conn)
       (setq port-repl-input-start-marker (make-marker))
       (setq port-repl-prompt-marker (make-marker))
@@ -96,6 +102,7 @@
       (port-repl--insert-prompt))
     (setf (port-client-handler conn) #'port-repl--connection-handler)
     (setf (port-client-repl-buffer conn) buf)
+    (setf (port-session-repl-buffer session) buf)
     buf))
 
 (defun port-repl--connection-handler (conn msg)
@@ -290,12 +297,27 @@ prepl has no direct interrupt op; this is a stub for future work."
   (interactive)
   (message "Port: interrupt is not yet supported on prepl"))
 
+(defun port-repl--active-buffer ()
+  "Return the REPL buffer of the current session, or nil."
+  (when port-default-session
+    (let ((buf (port-session-repl-buffer port-default-session)))
+      (and (buffer-live-p buf) buf))))
+
 (defun port-repl-emit-comment (text)
-  "Emit TEXT as a comment line in the REPL (for command echoes)."
-  (when (and port--connection (port-client-repl-buffer port--connection))
-    (with-current-buffer (port-client-repl-buffer port--connection)
+  "Emit TEXT as a comment line in the active REPL buffer."
+  (when-let ((buf (port-repl--active-buffer)))
+    (with-current-buffer buf
       (port-repl--insert-output
        (cons (format ";; %s\n" text) 'port-repl-tap-face)))))
+
+(defun port-repl-emit-text (text &optional face)
+  "Emit raw TEXT into the active REPL buffer.
+Optional FACE defaults to `port-repl-result-face'."
+  (when-let ((buf (port-repl--active-buffer)))
+    (with-current-buffer buf
+      (port-repl--insert-output
+       (cons (if (string-suffix-p "\n" text) text (concat text "\n"))
+             (or face 'port-repl-result-face))))))
 
 (provide 'port-repl)
 

@@ -16,6 +16,8 @@
 ;;; Code:
 
 (require 'port-client)
+(require 'port-session)
+(require 'port-tooling)
 (require 'port-eval)
 (require 'port-repl)
 
@@ -31,47 +33,80 @@
      (if default (format "%s (default %s): " prompt default) (concat prompt ": "))
      nil nil default)))
 
+(defun port--tool-emit (label result)
+  "Render RESULT (an alist from `port-tooling-call') into the REPL.
+LABEL is shown as a leading comment so the user sees what produced
+the output."
+  (let ((tag (alist-get :tag result))
+        (out (alist-get :out result))
+        (err (alist-get :err result)))
+    (port-repl-emit-comment label)
+    (when (and out (not (string-empty-p out)))
+      (port-repl-emit-text out 'port-repl-stdout-face))
+    (when (and err (not (string-empty-p err)))
+      (port-repl-emit-text err 'port-repl-stderr-face))
+    (pcase tag
+      (:ok
+       (let ((val (alist-get :val result)))
+         (when (and val (not (member val '("nil" "\"\"" ""))))
+           (port-repl-emit-text val))))
+      (:err
+       (port-repl-emit-text (alist-get :ex result) 'port-repl-stderr-face)))))
+
 ;;;###autoload
 (defun port-doc (sym)
-  "Show documentation for SYM via `clojure.repl/doc'."
+  "Show documentation for SYM via `clojure.repl/doc' on the tool socket."
   (interactive (list (port--read-symbol "Doc")))
-  (port-repl-emit-comment (format "doc %s" sym))
-  (port-eval-string (format "(clojure.repl/doc %s)" sym)))
+  (port-tooling-call
+   (port-current-session)
+   (format "(with-out-str (clojure.repl/doc %s))" sym)
+   (lambda (result) (port--tool-emit (format "doc %s" sym) result))))
 
 ;;;###autoload
 (defun port-source (sym)
-  "Show source for SYM via `clojure.repl/source'."
+  "Show source for SYM via `clojure.repl/source' on the tool socket."
   (interactive (list (port--read-symbol "Source")))
-  (port-repl-emit-comment (format "source %s" sym))
-  (port-eval-string (format "(clojure.repl/source %s)" sym)))
+  (port-tooling-call
+   (port-current-session)
+   (format "(with-out-str (clojure.repl/source %s))" sym)
+   (lambda (result) (port--tool-emit (format "source %s" sym) result))))
 
 ;;;###autoload
 (defun port-apropos (pattern)
-  "Find symbols matching PATTERN via `clojure.repl/apropos'."
+  "Find symbols matching PATTERN via `clojure.repl/apropos' on the tool socket."
   (interactive (list (read-string "Apropos pattern: ")))
-  (port-eval-string (format "(clojure.repl/apropos %S)" pattern)))
+  (port-tooling-call
+   (port-current-session)
+   (format "(clojure.repl/apropos %S)" pattern)
+   (lambda (result) (port--tool-emit (format "apropos %s" pattern) result))))
 
 ;;;###autoload
 (defun port-macroexpand-1 ()
-  "Macroexpand the form at point once."
+  "Macroexpand the form at point once via the tool socket."
   (interactive)
   (let* ((bounds (bounds-of-thing-at-point 'sexp))
          (form   (buffer-substring-no-properties (car bounds) (cdr bounds))))
-    (port-repl-emit-comment "macroexpand-1")
-    (port-eval-string (format "(macroexpand-1 (quote %s))" form))))
+    (port-tooling-call
+     (port-current-session)
+     (format "(macroexpand-1 (quote %s))" form)
+     (lambda (result) (port--tool-emit "macroexpand-1" result)))))
 
 ;;;###autoload
 (defun port-macroexpand ()
-  "Fully macroexpand the form at point."
+  "Fully macroexpand the form at point via the tool socket."
   (interactive)
   (let* ((bounds (bounds-of-thing-at-point 'sexp))
          (form   (buffer-substring-no-properties (car bounds) (cdr bounds))))
-    (port-repl-emit-comment "macroexpand")
-    (port-eval-string (format "(clojure.walk/macroexpand-all (quote %s))" form))))
+    (port-tooling-call
+     (port-current-session)
+     (format "(clojure.walk/macroexpand-all (quote %s))" form)
+     (lambda (result) (port--tool-emit "macroexpand" result)))))
 
 ;;;###autoload
 (defun port-load-file (file)
-  "Load FILE in the running prepl via `clojure.core/load-file'."
+  "Load FILE in the running prepl on the user socket.
+Loading runs on the user socket because it has visible side effects
+on the REPL session (defines vars, switches namespace)."
   (interactive
    (list (read-file-name "Load file: " nil
                          (and buffer-file-name buffer-file-name) t)))
@@ -81,7 +116,7 @@
 
 ;;;###autoload
 (defun port-set-ns (ns)
-  "Switch the REPL namespace to NS via `in-ns'."
+  "Switch the REPL namespace to NS via `in-ns' on the user socket."
   (interactive
    (list (read-string "Namespace: "
                       (or (port--current-buffer-ns) "user"))))
@@ -99,8 +134,8 @@
 (defun port-switch-to-repl ()
   "Pop to the active REPL buffer."
   (interactive)
-  (if-let ((conn port-client-default-connection)
-           (buf  (port-client-repl-buffer conn)))
+  (if-let ((session port-default-session)
+           (buf     (port-session-repl-buffer session)))
       (pop-to-buffer buf)
     (user-error "Port: not connected")))
 

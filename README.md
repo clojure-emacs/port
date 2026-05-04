@@ -20,6 +20,22 @@ completion, Port follows monroe's lead and implements such commands by simply
 evaluating a Clojure form (e.g. `(clojure.repl/doc foo)`) and printing the
 result into the REPL buffer.
 
+## Architecture
+
+prepl has no built-in request id, so any tooling that needs to know which
+response belongs to which request has to layer that on top. Port does it by
+opening **two** prepl connections per session:
+
+- a **user socket** that drives the REPL buffer with raw streaming output,
+- a **tool socket** that carries helper-command requests (doc, source,
+  macroexpand, …) wrapped in a small bootstrap function that captures
+  `*out*` / `*err*` and returns a tagged map containing the request id.
+
+The bootstrap (`port.tooling/-eval`) is sent once on connect; subsequent
+helper calls go through it and dispatch back to per-request callbacks via
+the request id. The user socket stays clean — no wrapping, no surprises —
+so direct evals from a Clojure buffer behave like typing into the REPL.
+
 ## Starting a prepl
 
 From your project, run:
@@ -65,7 +81,8 @@ the REPL buffer.
 ## Limitations (today)
 
 - No `port-jack-in`; you start the prepl yourself.
-- No inline overlays, eldoc, completion, or debugger.
+- No inline overlays, eldoc, completion, or debugger. (The tool socket
+  makes these tractable; they're just not implemented yet.)
 - No structured error rendering; stacktraces print as the server emits them.
 - No persistent input history.
 

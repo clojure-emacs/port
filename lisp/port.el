@@ -40,6 +40,8 @@
 ;;; Code:
 
 (require 'port-client)
+(require 'port-session)
+(require 'port-tooling)
 (require 'port-repl)
 (require 'port-eval)
 (require 'port-mode)
@@ -66,28 +68,31 @@
 ;;;###autoload
 (defun port-connect (host port)
   "Connect to a running prepl server at HOST:PORT.
-Pops to the REPL buffer on success."
+Opens a user socket for the REPL and a separate tool socket for
+correlated helper-command requests, then pops to the REPL buffer."
   (interactive
    (list (read-string (format "Host (default %s): " port-default-host)
                       nil nil port-default-host)
          (read-number "Port: " port-default-port)))
-  (let* ((conn (port-client-connect host port))
-         (buf  (port-repl-create-buffer conn)))
+  (let* ((user-conn (port-client-connect host port))
+         (tool-conn (port-client-connect host port))
+         (session   (port-session--make
+                     :host host :port port
+                     :user-conn user-conn
+                     :tool-conn tool-conn))
+         (buf       (port-repl-create-buffer session)))
+    (setq port-default-session session)
+    (port-tooling-install session)
     (pop-to-buffer buf)
-    (message "Port connected to %s:%d" host port)))
+    (message "Port connected to %s:%d (user + tool sockets)" host port)))
 
 ;;;###autoload
 (defun port-disconnect ()
-  "Disconnect the current prepl connection."
+  "Disconnect the current Port session (both sockets)."
   (interactive)
-  (when-let ((conn (port-current-connection)))
-    (port-client-disconnect conn)
+  (when port-default-session
+    (port-session-shutdown port-default-session)
     (message "Port disconnected.")))
-
-(defun port-current-connection ()
-  "Return the active connection for the current buffer, or nil."
-  (or (and (boundp 'port--connection) port--connection)
-      port-client-default-connection))
 
 (provide 'port)
 

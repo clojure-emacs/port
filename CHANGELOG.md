@@ -5,7 +5,12 @@
 Initial prototype.
 
 - TCP prepl client with a small EDN-ish reader.
-- Single-buffer REPL that renders `:ret`, `:out`, `:err`, and `:tap` messages.
+- Two-socket session model: a user socket drives the REPL with raw
+  streaming output, and a separate tool socket carries helper-command
+  requests with reliable request/response correlation via a small
+  `port.tooling/-eval` bootstrap.
+- Single-buffer REPL that renders `:ret`, `:out`, `:err`, and `:tap`
+  messages.
 - Interactive eval commands: last-sexp, defun-at-point, region, buffer.
 - Helper commands powered by Clojure evaluation: doc, source, apropos,
   macroexpand-1, macroexpand, load-file, set-ns.
