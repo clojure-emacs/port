@@ -49,7 +49,28 @@ clj -X clojure.core.server/start-server \
 You can also embed an equivalent `start-server` call into your application's
 `-main`, or wire it up via a `deps.edn` alias.
 
-## Connecting from Emacs
+## Installation
+
+Port isn't on MELPA yet (it might be once it's stable enough for a real
+release).  In the meantime, the easiest way is `package-vc-install` on
+Emacs 29+:
+
+```elisp
+(package-vc-install
+ '(port :url "https://github.com/clojure-emacs/port"
+        :branch "main"))
+```
+
+If you use [`use-package`](https://github.com/jwiegley/use-package) on Emacs
+30+ you can put the same thing in your config and let it handle install:
+
+```elisp
+(use-package port
+  :vc (:url "https://github.com/clojure-emacs/port" :branch "main")
+  :hook (clojure-mode . port-mode))
+```
+
+For a manual checkout (e.g. while contributing):
 
 ```elisp
 (add-to-list 'load-path "/path/to/port/lisp")
@@ -57,8 +78,10 @@ You can also embed an equivalent `start-server` call into your application's
 (add-hook 'clojure-mode-hook #'port-mode)
 ```
 
-Then `M-x port-connect`, accept the default `localhost:5555`, and a REPL
-buffer pops up.
+## Connecting from Emacs
+
+`M-x port-connect`, accept the default `localhost:5555`, and a REPL buffer
+pops up.
 
 ## Key bindings (in `port-mode`)
 
