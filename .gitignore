@@ -1,0 +1,14 @@
+*~
+*\#*\#
+*.\#*
+*.elc
+flycheck_*.el
+/.eldev
+/Eldev-local
+elpa*
+.depend
+TAGS
+.DS_Store
+dist
+lisp/port-autoloads.el
+lisp/port-pkg.el
