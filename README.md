@@ -110,6 +110,12 @@ the REPL buffer.
 - No structured error rendering; stacktraces print as the server emits them.
 - No persistent input history.
 
+## Design
+
+For the architecture, the rationale behind the two-socket model, and a
+walkthrough of how each piece fits together, see
+[`doc/design.md`](doc/design.md).
+
 ## License
 
 Distributed under the GNU General Public License, version 3 or later.
