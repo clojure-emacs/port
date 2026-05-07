@@ -402,7 +402,10 @@ architecture.
 
 ## Known limitations
 
-- No `port-jack-in`; the user starts the prepl manually.
+- Jack-in covers `deps.edn` and `project.clj` only.  Babashka,
+  shadow-cljs, and per-project alias selection (`-A:dev` etc.) are not
+  yet supported; users with those setups can still launch the prepl
+  manually and `M-x port-connect`.
 - No structured stacktrace buffer.  Exceptions print as the prepl
   emits them.  The infrastructure is there — `:exception true` is
   detected on `:ret` messages — it just isn't yet rendered into a
@@ -421,23 +424,25 @@ architecture.
 
 In rough priority order:
 
-1. `port-jack-in`: detect `deps.edn`, `project.clj`, `bb.edn` etc.,
-   spawn a prepl, discover its port.
-2. Structured stacktrace buffer: detect `:exception true` on the user
+1. Structured stacktrace buffer: detect `:exception true` on the user
    socket, parse the printed `Throwable->map`, render in a dedicated
    buffer with navigation.
-3. Jar source resolution: when `:file` resolves under a jar URL, ask
+2. Jar source resolution: when `:file` resolves under a jar URL, ask
    the prepl to extract the file's contents (or use Emacs's
    `archive-mode`/tramp-archive support).
-4. xref backend: replace the standalone `port-find-definition`
+3. Test runner integration (`clojure.test`).
+4. Pretty-printed and length-capped result rendering in the REPL.
+5. xref backend: replace the standalone `port-find-definition`
    command with an `xref-backend-functions` implementation, which
    gets us references and apropos UI for free.
-5. Reader extension to support vectors and lists, removing the need
+6. Jack-in for babashka and shadow-cljs, plus per-project alias
+   selection.
+7. Reader extension to support vectors and lists, removing the need
    for `pr-str` on the Clojure side of helper commands.
-6. Multi-session support keyed per clojure-mode buffer.
-7. Persistent input history (per-project history file).
-8. CIDER-style result overlays (deliberately listed last; the
-   "all output goes to the REPL" UX is a deliberate choice).
+8. Multi-session support keyed per clojure-mode buffer.
+9. Persistent input history (per-project history file).
+10. CIDER-style result overlays (deliberately listed last; the
+    "all output goes to the REPL" UX is a deliberate choice).
 
 ## Versioning
 

@@ -47,6 +47,7 @@
 (require 'port-eldoc)
 (require 'port-completion)
 (require 'port-xref)
+(require 'port-jack-in)
 (require 'port-mode)
 
 (defgroup port nil
@@ -87,7 +88,8 @@ correlated helper-command requests, then pops to the REPL buffer."
     (setq port-default-session session)
     (port-tooling-install session)
     (pop-to-buffer buf)
-    (message "Port connected to %s:%d (user + tool sockets)" host port)))
+    (message "Port connected to %s:%d (user + tool sockets)" host port)
+    session))
 
 ;;;###autoload
 (defun port-disconnect ()

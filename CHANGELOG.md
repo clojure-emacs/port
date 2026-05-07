@@ -17,6 +17,10 @@ Initial prototype.
 - `port-find-definition` (bound to `M-.`) jumps to the source of the
   symbol at point using `:file` / `:line` from var metadata. Files
   inside jars are not yet handled.
+- `M-x port` jacks in: detects `deps.edn` / `project.clj`, picks a free
+  port, spawns a JVM running a prepl server, polls until reachable, and
+  connects.  If a session is already active it just pops to the REPL,
+  SLIME-style.
 - Single-buffer REPL that renders `:ret`, `:out`, `:err`, and `:tap`
   messages.
 - Interactive eval commands: last-sexp, defun-at-point, region, buffer.

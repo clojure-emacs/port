@@ -28,6 +28,7 @@
   user-conn
   tool-conn
   repl-buffer
+  jvm-process            ; non-nil when this session was started via `M-x port'
   (next-id 0)
   (pending '()))
 
@@ -56,11 +57,14 @@
       (cdr entry))))
 
 (defun port-session-shutdown (session)
-  "Tear down both connections of SESSION."
+  "Tear down both connections of SESSION, and the JVM if we spawned it."
   (when (port-session-user-conn session)
     (port-client-disconnect (port-session-user-conn session)))
   (when (port-session-tool-conn session)
     (port-client-disconnect (port-session-tool-conn session)))
+  (when-let ((proc (port-session-jvm-process session)))
+    (when (process-live-p proc)
+      (delete-process proc)))
   (setf (port-session-pending session) nil)
   (when (eq port-default-session session)
     (setq port-default-session nil)))

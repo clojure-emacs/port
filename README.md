@@ -95,16 +95,23 @@ so direct evals from a Clojure buffer behave like typing into the REPL.
 
 ## Starting a prepl
 
-From your project, run:
+The simplest path is to let Port spawn one for you: visit a file in your
+project and run `M-x port`.  It auto-detects the project layout (`deps.edn`
+or `project.clj`), picks a free port in `5555-5574`, starts a JVM with a
+prepl server on that port, and connects when it's ready.  The server's
+stdout/stderr lands in a `*port-server*` buffer below the REPL.
+
+If you'd rather run the prepl yourself (handy for embedding it in a
+long-running application or pre-warming the JVM), start it like this:
 
 ```
-clj -X clojure.core.server/start-server \
-    :name '"port"' :port 5555 \
-    :accept clojure.core.server/io-prepl
+clojure -e '(do (clojure.core.server/start-server
+                  {:name "port" :port 5555
+                   :accept (quote clojure.core.server/io-prepl)})
+                @(promise))'
 ```
 
-You can also embed an equivalent `start-server` call into your application's
-`-main`, or wire it up via a `deps.edn` alias.
+and then `M-x port-connect` to attach.
 
 ## Installation
 
@@ -137,8 +144,9 @@ For a manual checkout (e.g. while contributing):
 
 ## Connecting from Emacs
 
-`M-x port-connect`, accept the default `localhost:5555`, and a REPL buffer
-pops up.
+For most projects `M-x port` is all you need — it starts a prepl and
+connects.  Use `M-x port-connect` (default `localhost:5555`) when you've
+started a prepl yourself or want to attach to one running elsewhere.
 
 ## Key bindings (in `port-mode`)
 
