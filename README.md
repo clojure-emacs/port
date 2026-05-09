@@ -122,7 +122,8 @@ Emacs 29+:
 ```elisp
 (package-vc-install
  '(port :url "https://github.com/clojure-emacs/port"
-        :branch "main"))
+        :branch "main"
+        :lisp-dir "lisp"))
 ```
 
 If you use [`use-package`](https://github.com/jwiegley/use-package) on Emacs
@@ -130,9 +131,13 @@ If you use [`use-package`](https://github.com/jwiegley/use-package) on Emacs
 
 ```elisp
 (use-package port
-  :vc (:url "https://github.com/clojure-emacs/port" :branch "main")
+  :vc (:url "https://github.com/clojure-emacs/port" :branch "main" :lisp-dir "lisp")
   :hook (clojure-mode . port-mode))
 ```
+
+The `:lisp-dir "lisp"` is needed because Port's sources live under `lisp/`
+rather than at the repository root; without it `package-vc-install` won't
+add that directory to `load-path` and byte-compilation will fail.
 
 For a manual checkout (e.g. while contributing):
 
