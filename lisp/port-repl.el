@@ -178,9 +178,17 @@ MSG is an alist as produced by `port-client--parse-messages'."
                              rear-nonsticky (read-only)
                              front-sticky (read-only)
                              face ,face)))
-    (when input-active
+    (cond
+     (input-active
       (port-repl--insert-prompt)
       (insert saved-input))
+     (t
+      ;; No prompt currently on screen: keep the markers at the new
+      ;; point so subsequent messages of the same response append
+      ;; after this output instead of treating it as input that
+      ;; needs preserving.
+      (set-marker port-repl-prompt-marker (point))
+      (set-marker port-repl-input-start-marker (point))))
     (set-window-point (get-buffer-window (current-buffer) 'visible)
                       (point-max))))
 
@@ -248,7 +256,12 @@ MSG is an alist as produced by `port-client--parse-messages'."
     (insert "\n")
     (add-text-properties port-repl-input-start-marker (point)
                          '(read-only t
-                           rear-nonsticky (read-only))))
+                           rear-nonsticky (read-only)))
+    ;; Commit the just-sent text: advance the prompt and input-start
+    ;; markers past it so response messages append after the form
+    ;; rather than getting inserted "above the prompt".
+    (set-marker port-repl-prompt-marker (point))
+    (set-marker port-repl-input-start-marker (point)))
   (push input port-repl-history)
   (setq port-repl-history-index -1)
   (port-client-send port--connection input))
