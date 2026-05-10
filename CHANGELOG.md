@@ -16,8 +16,10 @@ Initial prototype.
 - `completion-at-point` for symbols visible in the buffer's namespace,
   driven by a synchronous tool-socket request that walks `ns-map'.
 - `port-find-definition` (bound to `M-.`) jumps to the source of the
-  symbol at point using `:file` / `:line` from var metadata. Files
-  inside jars are not yet handled.
+  symbol at point using `:file` / `:line` from var metadata.  When
+  the source lives inside a jar, the file's contents are slurped
+  over the tool socket and shown in a read-only `*port-jar: ...*`
+  buffer.
 - `M-x port` jacks in: detects `deps.edn` / `project.clj`, picks a free
   port, spawns a JVM running a prepl server, polls until reachable, and
   connects.  If a session is already active it just pops to the REPL,

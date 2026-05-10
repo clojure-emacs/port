@@ -27,16 +27,29 @@
     (substring-no-properties s)))
 
 (defun port-xref--query (sym ns)
-  "Build the Clojure form that returns SYM's source location in NS."
+  "Build the Clojure form that returns SYM's source location in NS.
+The map carries `:file' / `:line' from var metadata, plus `:url'
+(the result of `clojure.java.io/resource' for the file) and
+`:contents' (the slurped string when the URL is a jar URL).  The
+URL/contents pair is what makes M-. work for vars whose source
+lives inside a jar."
   (format
    (concat "(when-let [ns (or (find-ns (quote %s)) (find-ns 'user))]"
            "  (when-let [v (try (ns-resolve ns (quote %s))"
            "                    (catch Throwable _ nil))]"
-           "    (let [m (meta v)]"
+           "    (let [m (meta v)"
+           "          file (:file m)"
+           "          url  (try (some-> file (clojure.java.io/resource))"
+           "                    (catch Throwable _ nil))"
+           "          jar? (and url (.startsWith (str url) \"jar:\"))]"
            "      {:name (str (symbol v))"
-           "       :file (:file m)"
+           "       :file file"
            "       :line (:line m)"
-           "       :column (:column m)})))")
+           "       :column (:column m)"
+           "       :url (some-> url str)"
+           "       :contents (when jar?"
+           "                   (try (slurp url)"
+           "                        (catch Throwable _ nil)))})))")
    ns sym))
 
 ;;;###autoload
@@ -69,25 +82,28 @@
        ((not (consp decoded))
         (message "Port: unexpected response for %s: %S" sym decoded))
        (t
-        (port-xref--jump (alist-get :file decoded)
-                         (alist-get :line decoded)
-                         sym)))))))
+        (port-xref--jump decoded sym)))))))
 
-(defun port-xref--jump (file line sym)
-  "Visit FILE at LINE if locally accessible; otherwise message about SYM."
-  (cond
-   ((null file)
-    (message "Port: no source file recorded for %s" sym))
-   ((file-name-absolute-p file)
-    (if (file-exists-p file)
-        (port-xref--visit file line)
-      (message "Port: source file %s is not locally accessible" file)))
-   (t
-    (let ((candidate (expand-file-name file default-directory)))
-      (if (file-exists-p candidate)
-          (port-xref--visit candidate line)
-        (message "Port: cannot resolve %s to a local file (jar source not yet supported)"
-                 file))))))
+(defun port-xref--jump (decoded sym)
+  "Open the location described by DECODED for SYM.
+DECODED is the parsed result map (alist) returned by
+`port-xref--query'.  Falls back through: absolute file →
+project-relative file → jar URL with embedded contents → message."
+  (let ((file     (alist-get :file decoded))
+        (line     (alist-get :line decoded))
+        (url      (alist-get :url decoded))
+        (contents (alist-get :contents decoded)))
+    (cond
+     ((and file (file-name-absolute-p file) (file-exists-p file))
+      (port-xref--visit file line))
+     ((and file (file-exists-p (expand-file-name file default-directory)))
+      (port-xref--visit (expand-file-name file default-directory) line))
+     ((and url (string-prefix-p "jar:" url) contents)
+      (port-xref--visit-jar url contents line))
+     ((null file)
+      (message "Port: no source file recorded for %s" sym))
+     (t
+      (message "Port: cannot resolve %s to a local file" file)))))
 
 (defun port-xref--visit (file line)
   "Push the current location onto xref's marker stack and visit FILE at LINE."
@@ -96,6 +112,40 @@
   (when line
     (goto-char (point-min))
     (forward-line (1- line))))
+
+(defun port-xref--visit-jar (url contents line)
+  "Open a read-only buffer with CONTENTS for the jar URL.
+URL is the original `jar:file:.../foo.jar!/inner.clj' string;
+LINE is the 1-based line to jump to (or nil)."
+  (xref-push-marker-stack)
+  (let* ((name (port-xref--jar-buffer-name url))
+         (buf  (get-buffer name)))
+    (unless buf
+      (setq buf (generate-new-buffer name))
+      (with-current-buffer buf
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (insert contents))
+        (goto-char (point-min))
+        (when (fboundp 'clojure-mode) (clojure-mode))
+        (setq buffer-read-only t)
+        (set-buffer-modified-p nil)
+        (setq-local port-xref--jar-url url)))
+    (pop-to-buffer-same-window buf)
+    (when line
+      (goto-char (point-min))
+      (forward-line (1- line)))))
+
+(defun port-xref--jar-buffer-name (url)
+  "Build a readable buffer name from a jar URL."
+  (cond
+   ((string-match "/\\([^/]+\\.jar\\)!/\\(.*\\)$" url)
+    (format "*port-jar: %s!/%s*"
+            (match-string 1 url) (match-string 2 url)))
+   (t (format "*port-jar: %s*" url))))
+
+(defvar-local port-xref--jar-url nil
+  "URL the current jar-source buffer was opened from, if any.")
 
 (provide 'port-xref)
 
