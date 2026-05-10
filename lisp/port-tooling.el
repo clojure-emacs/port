@@ -34,10 +34,30 @@
                  {:port/id id :tag :ok :val (pr-str v)
                   :out (str out-buf) :err (str err-buf)})
                (catch Throwable t
-                 {:port/id id :tag :err :ex (pr-str (Throwable->map t))
+                 {:port/id id :tag :err
+                  :ex (pr-str (Throwable->map t))
+                  :ex-message (or (.getMessage t) (.getName (class t)))
+                  :out (str out-buf) :err (str err-buf)})))))
+       (clojure.core/defn -user-eval [id ns-sym form-string]
+         (let [out-buf (java.io.StringWriter.)
+               err-buf (java.io.StringWriter.)]
+           (binding [*out* out-buf *err* err-buf
+                     *ns* (or (find-ns ns-sym) (find-ns 'user))]
+             (try
+               (let [v (eval (read-string (str \"(do\\n\" form-string \"\\n)\")))]
+                 {:port/id id :tag :ok :val (pr-str v)
+                  :out (str out-buf) :err (str err-buf)
+                  :ns (str (ns-name *ns*))})
+               (catch Throwable t
+                 {:port/id id :tag :err
+                  :ex (pr-str (Throwable->map t))
+                  :ex-message (or (.getMessage t) (.getName (class t)))
                   :out (str out-buf) :err (str err-buf)}))))))"
   "Clojure form sent on the tool socket on connect.
-Defines `port.tooling/-eval', the wrapper used by `port-tooling-call'.")
+Defines `port.tooling/-eval' (the wrapper used by `port-tooling-call'
+for internal helper queries) and `port.tooling/-user-eval' (the
+namespace-aware variant used for interactive evaluation from source
+buffers).")
 
 (defun port-tooling-install (session)
   "Install the tool-socket handler on SESSION and send the bootstrap form."
@@ -51,10 +71,25 @@ Defines `port.tooling/-eval', the wrapper used by `port-tooling-call'.")
   "Evaluate FORM-STRING on SESSION's tool socket.
 CALLBACK is invoked with the result alist, which has keys
 `:port/id', `:tag' (`:ok' or `:err'), `:val' (printed return value
-when `:ok'), `:ex' (printed Throwable->map when `:err'), `:out',
+when `:ok'), `:ex' (printed Throwable->map when `:err'),
+`:ex-message' (just the exception's message when `:err'), `:out',
 `:err'."
   (let* ((id (port-session-next-id! session))
          (wrapped (format "(port.tooling/-eval %d (fn [] %s))" id form-string)))
+    (port-session-register-callback session id callback)
+    (port-client-send (port-session-tool-conn session) wrapped)))
+
+(defun port-tooling-user-eval (session ns code callback)
+  "Evaluate CODE in namespace NS on SESSION's tool socket.
+NS is a Clojure namespace name as a string or symbol; if it can't
+be resolved on the JVM side, evaluation falls back to the `user'
+namespace.  CODE is a Clojure source string, possibly containing
+several top-level forms (the wrapper splices them into a `do').
+CALLBACK is invoked with the parsed result alist (same shape as
+`port-tooling-call', plus `:ns' on success)."
+  (let* ((id (port-session-next-id! session))
+         (wrapped (format "(port.tooling/-user-eval %d (quote %s) %S)"
+                          id ns code)))
     (port-session-register-callback session id callback)
     (port-client-send (port-session-tool-conn session) wrapped)))
 
