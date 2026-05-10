@@ -119,11 +119,16 @@ on the REPL session (defines vars, switches namespace)."
 
 ;;;###autoload
 (defun port-set-ns (ns)
-  "Switch the REPL namespace to NS via `in-ns' on the user socket."
+  "Switch the REPL namespace to NS via `in-ns' on the user socket.
+This intentionally bypasses `port-eval-display': the tool socket
+wraps each eval in `binding' for *ns*, which would unwind the
+in-ns immediately, so we must send directly on the user socket
+where the namespace actually persists."
   (interactive
    (list (read-string "Namespace: "
                       (or (port--current-buffer-ns) "user"))))
-  (port-eval-string (format "(in-ns '%s)" ns)))
+  (port-eval--send-via-repl (port-current-session)
+                            (format "(in-ns '%s)" ns)))
 
 (defun port--current-buffer-ns ()
   "Best-effort namespace extraction from the current Clojure buffer."
