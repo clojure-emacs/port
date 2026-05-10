@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.1.0-snapshot (unreleased)
+## 0.1.0 (2026-05-10)
 
-Initial prototype.
+Initial release.
 
 - TCP prepl client with a small EDN-ish reader (now handles maps,
   vectors, and lists with simple leaf values).

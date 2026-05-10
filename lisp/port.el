@@ -6,7 +6,7 @@
 ;; Maintainer: Bozhidar Batsov <bozhidar@batsov.dev>
 ;; Homepage: https://github.com/bbatsov/port
 ;; Keywords: languages, clojure, port, prepl
-;; Version: 0.1.0-snapshot
+;; Version: 0.1.0
 ;; Package-Requires: ((emacs "28") (clojure-mode "5.19"))
 
 ;; This program is free software: you can redistribute it and/or modify
@@ -56,7 +56,7 @@
   :group 'applications
   :link '(url-link :tag "GitHub" "https://github.com/bbatsov/port"))
 
-(defconst port-version "0.1.0-snapshot"
+(defconst port-version "0.1.0"
   "The current version of Port.")
 
 (defcustom port-default-host "localhost"
