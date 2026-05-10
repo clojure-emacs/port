@@ -17,6 +17,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'seq)
 (require 'port-client)
 (require 'port-session)
 (require 'port-stacktrace)
@@ -43,6 +44,25 @@ inserted above the prompt (preserving any typed-but-unsent input).")
 
 (defvar-local port-repl-history-index -1
   "Current position in `port-repl-history' while browsing.")
+
+(defvar-local port-repl--history-file nil
+  "Resolved absolute path of the file backing this buffer's REPL history.")
+
+(defcustom port-repl-history-file nil
+  "Where REPL input history is persisted.
+If nil, Port writes to .port-history at the project root (or
+`default-directory' if no project root can be detected).  If a
+string, it is used as the absolute path; the same file is shared
+across sessions.  Set to t to disable persistence entirely."
+  :type '(choice (const :tag "Per-project (.port-history)" nil)
+                 (const :tag "Disabled" t)
+                 (file :tag "Specific file"))
+  :group 'port)
+
+(defcustom port-repl-history-size 1000
+  "Maximum number of REPL history entries to keep on disk and in memory."
+  :type 'integer
+  :group 'port)
 
 (defface port-repl-prompt-face
   '((t :inherit font-lock-keyword-face :weight bold))
@@ -100,6 +120,8 @@ inserted above the prompt (preserving any typed-but-unsent input).")
       (setq port--connection conn)
       (setq port-repl-input-start-marker (make-marker))
       (setq port-repl-prompt-marker (make-marker))
+      (setq port-repl--history-file (port-repl--resolve-history-file))
+      (port-repl--load-history)
       (let ((inhibit-read-only t))
         (erase-buffer)
         (insert (format ";; Port %s connected to %s:%d\n"
@@ -110,6 +132,72 @@ inserted above the prompt (preserving any typed-but-unsent input).")
     (setf (port-client-repl-buffer conn) buf)
     (setf (port-session-repl-buffer session) buf)
     buf))
+
+(declare-function port-jack-in--detect-project-root "port-jack-in")
+
+(defun port-repl--resolve-history-file ()
+  "Return the absolute path of the REPL history file for this buffer.
+Returns nil when persistence is disabled or no usable directory is
+known."
+  (cond
+   ((eq port-repl-history-file t) nil)
+   ((stringp port-repl-history-file)
+    (expand-file-name port-repl-history-file))
+   (t
+    (let ((root (or (and (fboundp 'port-jack-in--detect-project-root)
+                         (port-jack-in--detect-project-root))
+                    default-directory)))
+      (and root (expand-file-name ".port-history" root))))))
+
+(defun port-repl--load-history ()
+  "Populate `port-repl-history' from `port-repl--history-file'.
+Trims to `port-repl-history-size' and rewrites the file when the
+on-disk count exceeds the cap."
+  (let ((file port-repl--history-file))
+    (when (and file (file-readable-p file))
+      (let (entries)
+        (with-temp-buffer
+          (insert-file-contents file)
+          (goto-char (point-min))
+          (while (not (eobp))
+            (condition-case _
+                (let ((entry (read (current-buffer))))
+                  (when (stringp entry) (push entry entries)))
+              (error (forward-line 1)))))
+        ;; entries is newest-first because we pushed oldest-first reads
+        ;; onto the front.
+        (let ((trimmed (if (> (length entries) port-repl-history-size)
+                           (seq-take entries port-repl-history-size)
+                         entries)))
+          (setq port-repl-history trimmed)
+          (when (and (> (length entries) port-repl-history-size)
+                     (file-writable-p file))
+            (port-repl--rewrite-history)))))))
+
+(defun port-repl--rewrite-history ()
+  "Atomically rewrite the history file with the current trimmed list."
+  (let ((file    port-repl--history-file)
+        ;; Capture the buffer-local list now -- once we switch to a
+        ;; temp buffer the buffer-local binding is gone.
+        (entries (reverse port-repl-history)))
+    (when (and file (file-writable-p file))
+      (with-temp-buffer
+        ;; Write oldest-first so that read order matches append order.
+        (dolist (entry entries)
+          (prin1 entry (current-buffer))
+          (insert "\n"))
+        (write-region nil nil file nil 'silent)))))
+
+(defun port-repl--append-history (input)
+  "Append INPUT to `port-repl--history-file' if persistence is enabled."
+  (let ((file port-repl--history-file))
+    (when (and file
+               (or (file-writable-p file)
+                   (file-writable-p (file-name-directory file))))
+      (with-temp-buffer
+        (prin1 input (current-buffer))
+        (insert "\n")
+        (write-region nil nil file 'append 'silent)))))
 
 (defun port-repl--connection-handler (conn msg)
   "Forward MSG to CONN's REPL buffer."
@@ -296,9 +384,22 @@ just append at point-max."
     (set-marker port-repl-prompt-marker (point))
     (set-marker port-repl-input-start-marker (point))
     (setq port-repl-prompt-active-p nil))
-  (push input port-repl-history)
+  (port-repl--record-history input)
   (setq port-repl-history-index -1)
   (port-client-send port--connection input))
+
+(defun port-repl--record-history (input)
+  "Add INPUT to in-memory history and the persistent file.
+Adjacent duplicates are skipped so repeatedly hitting RET on the
+same form doesn't fill the ring."
+  (unless (or (string-blank-p input)
+              (and port-repl-history
+                   (equal (car port-repl-history) input)))
+    (push input port-repl-history)
+    (when (> (length port-repl-history) port-repl-history-size)
+      (setq port-repl-history (seq-take port-repl-history
+                                        port-repl-history-size)))
+    (port-repl--append-history input)))
 
 (defun port-repl-history-previous ()
   "Cycle back through input history."

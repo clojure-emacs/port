@@ -109,6 +109,77 @@ populate the *port-stacktrace* buffer."
       (when (get-buffer port-stacktrace-buffer-name)
         (kill-buffer port-stacktrace-buffer-name)))))
 
+(defun port-repl-tests--with-history-file (thunk)
+  "Run THUNK with a temp history file rebound for the current buffer.
+THUNK is called with the file path as its single argument; the
+file is removed afterwards."
+  (let* ((file (make-temp-file "port-history-")))
+    (unwind-protect
+        (progn
+          (setq-local port-repl--history-file file
+                      port-repl-history nil
+                      port-repl-history-index -1)
+          (funcall thunk file))
+      (when (file-exists-p file)
+        (delete-file file)))))
+
+(ert-deftest port-repl-test-history-append-and-load ()
+  (let ((buf (port-repl-tests--fresh-buffer)))
+    (unwind-protect
+        (with-current-buffer buf
+          (port-repl-tests--with-history-file
+           (lambda (_file)
+             ;; Three sends, but two are duplicates.
+             (port-repl--record-history "(+ 1 1)")
+             (port-repl--record-history "(+ 1 1)")  ; duplicate, dropped
+             (port-repl--record-history "(* 2 3)")
+             (port-repl--record-history "")        ; blank, dropped
+             ;; In-memory history is most-recent-first, no adj. dups.
+             (should (equal '("(* 2 3)" "(+ 1 1)") port-repl-history))
+             ;; Reload from disk into a fresh buffer state.
+             (setq port-repl-history nil)
+             (port-repl--load-history)
+             (should (equal '("(* 2 3)" "(+ 1 1)") port-repl-history)))))
+      (kill-buffer buf))))
+
+(ert-deftest port-repl-test-history-load-trims-and-rewrites ()
+  (let ((buf (port-repl-tests--fresh-buffer))
+        (port-repl-history-size 3))
+    (unwind-protect
+        (with-current-buffer buf
+          (port-repl-tests--with-history-file
+           (lambda (file)
+             (dolist (i '(1 2 3 4 5 6 7))
+               (port-repl--record-history (format "(form %d)" i)))
+             ;; In-memory list trimmed to 3 most-recent.
+             (should (= 3 (length port-repl-history)))
+             (should (equal "(form 7)" (car port-repl-history)))
+             ;; Load also trims the oversized file.
+             (setq port-repl-history nil)
+             (port-repl--load-history)
+             (should (= 3 (length port-repl-history)))
+             ;; And the file on disk is now exactly 3 lines.
+             (with-temp-buffer
+               (insert-file-contents file)
+               (should (= 3 (count-lines (point-min) (point-max))))))))
+      (kill-buffer buf))))
+
+(ert-deftest port-repl-test-history-disabled ()
+  "When `port-repl-history-file' is t, no file is resolved."
+  (let ((port-repl-history-file t))
+    (with-temp-buffer
+      (port-repl-mode)
+      (should (null (port-repl--resolve-history-file))))))
+
+(ert-deftest port-repl-test-history-uses-explicit-file ()
+  (let* ((path (make-temp-file "port-history-explicit-"))
+         (port-repl-history-file path))
+    (unwind-protect
+        (with-temp-buffer
+          (port-repl-mode)
+          (should (equal path (port-repl--resolve-history-file))))
+      (delete-file path))))
+
 (provide 'port-repl-tests)
 
 ;;; port-repl-tests.el ends here
