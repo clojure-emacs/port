@@ -45,7 +45,8 @@ not above the prompt."
             (add-text-properties port-repl-input-start-marker (point)
                                  '(read-only t rear-nonsticky (read-only)))
             (set-marker port-repl-prompt-marker (point))
-            (set-marker port-repl-input-start-marker (point)))
+            (set-marker port-repl-input-start-marker (point))
+            (setq port-repl-prompt-active-p nil))
           ;; The prepl response.
           (port-repl-handle-message
            '((:tag . :out) (:val . "hi\n")))

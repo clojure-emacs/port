@@ -32,6 +32,11 @@
 (defvar-local port-repl-prompt-marker nil
   "Marker just past the most recently inserted prompt.")
 
+(defvar-local port-repl-prompt-active-p nil
+  "Non-nil when a live prompt is currently displayed at the end of the buffer.
+When nil, output is appended at point-max; when non-nil, it's
+inserted above the prompt (preserving any typed-but-unsent input).")
+
 (defvar-local port-repl-history nil
   "Ring of previously sent inputs (most recent first).")
 
@@ -130,7 +135,8 @@
                              field port-repl-prompt))
       (set-marker port-repl-prompt-marker (point)))
     (set-marker port-repl-input-start-marker (point))
-    (set-marker-insertion-type port-repl-input-start-marker nil)))
+    (set-marker-insertion-type port-repl-input-start-marker nil)
+    (setq port-repl-prompt-active-p t)))
 
 (defun port-repl-handle-message (msg)
   "Render a single prepl MSG into the current REPL buffer.
@@ -156,41 +162,43 @@ MSG is an alist as produced by `port-client--parse-messages'."
     (format "%s\n" val)))
 
 (defun port-repl--insert-output (text+face)
-  "Insert TEXT+FACE (a (TEXT . FACE) pair) into the buffer above the prompt."
+  "Insert TEXT+FACE (a (TEXT . FACE) pair) into the REPL buffer.
+If a prompt is currently displayed (`port-repl-prompt-active-p'),
+insert above it -- preserving any typed-but-unsent input -- so the
+prompt and the user's typing stay at the bottom.  Otherwise (e.g.
+between sending a form and receiving its first response message)
+just append at point-max."
   (let* ((text (car text+face))
          (face (cdr text+face))
-         (inhibit-read-only t)
-         (insert-pos (marker-position port-repl-prompt-marker))
-         (input-active (< insert-pos (point-max)))
-         (saved-input (when input-active
-                        (buffer-substring-no-properties
-                         port-repl-input-start-marker (point-max)))))
-    (when input-active
-      (delete-region port-repl-input-start-marker (point-max))
-      (delete-region (- insert-pos (port-repl--prompt-length)) insert-pos))
-    (goto-char (if input-active
-                   (- insert-pos (port-repl--prompt-length))
-                 insert-pos))
-    (let ((start (point)))
-      (insert text)
-      (add-text-properties start (point)
-                           `(read-only t
-                             rear-nonsticky (read-only)
-                             front-sticky (read-only)
-                             face ,face)))
+         (inhibit-read-only t))
     (cond
-     (input-active
-      (port-repl--insert-prompt)
-      (insert saved-input))
+     (port-repl-prompt-active-p
+      (let* ((insert-pos (marker-position port-repl-prompt-marker))
+             (saved-input (buffer-substring-no-properties
+                           port-repl-input-start-marker (point-max))))
+        (delete-region port-repl-input-start-marker (point-max))
+        (delete-region (- insert-pos (port-repl--prompt-length)) insert-pos)
+        (goto-char (- insert-pos (port-repl--prompt-length)))
+        (port-repl--insert-output-text text face)
+        (port-repl--insert-prompt)
+        (insert saved-input)))
      (t
-      ;; No prompt currently on screen: keep the markers at the new
-      ;; point so subsequent messages of the same response append
-      ;; after this output instead of treating it as input that
-      ;; needs preserving.
+      (goto-char (point-max))
+      (port-repl--insert-output-text text face)
       (set-marker port-repl-prompt-marker (point))
       (set-marker port-repl-input-start-marker (point))))
     (set-window-point (get-buffer-window (current-buffer) 'visible)
                       (point-max))))
+
+(defun port-repl--insert-output-text (text face)
+  "Insert TEXT at point with FACE and read-only properties."
+  (let ((start (point)))
+    (insert text)
+    (add-text-properties start (point)
+                         `(read-only t
+                           rear-nonsticky (read-only)
+                           front-sticky (read-only)
+                           face ,face))))
 
 (defun port-repl--prompt-length ()
   "Return the character length of the current prompt string."
@@ -257,11 +265,13 @@ MSG is an alist as produced by `port-client--parse-messages'."
     (add-text-properties port-repl-input-start-marker (point)
                          '(read-only t
                            rear-nonsticky (read-only)))
-    ;; Commit the just-sent text: advance the prompt and input-start
-    ;; markers past it so response messages append after the form
-    ;; rather than getting inserted "above the prompt".
+    ;; Commit the just-sent text: advance the markers past it and
+    ;; mark the prompt as no longer "live", so response messages
+    ;; append after the form rather than getting inserted "above
+    ;; the prompt".
     (set-marker port-repl-prompt-marker (point))
-    (set-marker port-repl-input-start-marker (point)))
+    (set-marker port-repl-input-start-marker (point))
+    (setq port-repl-prompt-active-p nil))
   (push input port-repl-history)
   (setq port-repl-history-index -1)
   (port-client-send port--connection input))
