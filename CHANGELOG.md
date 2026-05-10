@@ -27,6 +27,11 @@ Initial prototype.
 - Single-buffer REPL that renders `:ret`, `:out`, `:err`, and `:tap`
   messages.
 - Interactive eval commands: last-sexp, defun-at-point, region, buffer.
+  Values returned through the tool-socket path are pretty-printed
+  via `clojure.pprint`, capped by `port-print-length` (default 50)
+  and `port-print-level` (default 5).  Multi-line results are
+  truncated to the first line in the minibuffer; the full text
+  appears in the REPL when `port-eval-display' is `both'.
 - Helper commands powered by Clojure evaluation: doc, source, apropos,
   macroexpand-1, macroexpand, load-file, set-ns.
 - `port-mode` minor mode for Clojure source buffers.

@@ -234,10 +234,18 @@ A few things worth noting:
   to the original `*out*` (i.e. the connection's writer) and surfaces
   as a stray `:out` message on the tool socket.  The dispatcher
   ignores those.
-- `:val` and `:ex` are `pr-str`'d.  This sidesteps the parser having
+- `-eval`'s `:val` is `pr-str`'d.  This sidesteps the parser having
   to handle every EDN value type — strings, numbers, keywords, maps
   with those leaf types, plus the printed-string trick handle 95% of
-  what the helper commands need.
+  what the helper commands need.  `:ex` is `pr-str`'d too; the
+  stacktrace renderer re-parses it through the same reader.
+- A second wrapper, `-user-eval`, handles the source-buffer eval
+  path.  It rebinds `*ns*` (so `(in-ns ...)` and unqualified
+  references resolve correctly) and produces `:val` via
+  `clojure.pprint/pprint` under caller-supplied `*print-length*` /
+  `*print-level*` caps.  This is the only place we pretty-print; the
+  internal `-eval` path keeps `pr-str` so its results stay
+  re-parseable.
 - The result map carries `:out` and `:err` even on success, so a
   helper that returns a value but also prints something can render
   both.
@@ -452,18 +460,23 @@ architecture.
 
 In rough priority order:
 
-1. Pretty-printed and length-capped result rendering in the REPL.
-2. Persistent input history (per-project history file).
-3. Test runner integration (`clojure.test`).
-4. xref backend: replace the standalone `port-find-definition`
+1. Persistent input history (per-project history file).
+2. Test runner integration (`clojure.test`).
+3. xref backend: replace the standalone `port-find-definition`
    command with an `xref-backend-functions` implementation, which
    gets us references and apropos UI for free.
-5. Jack-in for babashka and shadow-cljs, plus per-project alias
+4. Jack-in for babashka and shadow-cljs, plus per-project alias
    selection.
-6. Multi-session support keyed per clojure-mode buffer.
-7. Trace-frame source resolution via the tool socket (round-trip
+5. Multi-session support keyed per clojure-mode buffer.
+6. Trace-frame source resolution via the tool socket (round-trip
    to `clojure.java.io/resource` per frame), so jar-only frames
    become navigable too.
+7. Pretty-printing on the user socket (REPL-typed input).  The
+   tool-socket eval path already pretty-prints, but vanilla
+   io-prepl on the user socket prints with `pr-str`.  Fixing this
+   needs either a custom `:valf` at server-start (which we control
+   in jack-in but not in `port-connect`) or post-processing in the
+   client.
 8. CIDER-style result overlays (deliberately listed last; the
    "all output goes to the REPL" UX is a deliberate choice).
 
