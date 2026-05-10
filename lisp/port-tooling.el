@@ -23,8 +23,27 @@
 (require 'port-client)
 (require 'port-session)
 
+(defcustom port-print-length 50
+  "Cap on `*print-length*' applied during interactive evaluation.
+Sequences longer than this are truncated with `...' in the value
+shown in the REPL/minibuffer.  Set to nil for no limit.
+
+This only affects the tool-socket path (the default for
+`port-eval-display').  Values printed by io-prepl on the user
+socket use the server's defaults."
+  :type '(choice integer (const :tag "Unlimited" nil))
+  :group 'port)
+
+(defcustom port-print-level 5
+  "Cap on `*print-level*' applied during interactive evaluation.
+Nested structures deeper than this are abbreviated with `#'.
+Set to nil for no limit.  See `port-print-length' for the scope."
+  :type '(choice integer (const :tag "Unlimited" nil))
+  :group 'port)
+
 (defconst port-tooling-bootstrap
-  "(do (clojure.core/ns port.tooling)
+  "(do (clojure.core/ns port.tooling
+         (:require [clojure.pprint]))
        (clojure.core/defn -eval [id thunk]
          (let [out-buf (java.io.StringWriter.)
                err-buf (java.io.StringWriter.)]
@@ -38,14 +57,19 @@
                   :ex (pr-str (Throwable->map t))
                   :ex-message (or (.getMessage t) (.getName (class t)))
                   :out (str out-buf) :err (str err-buf)})))))
-       (clojure.core/defn -user-eval [id ns-sym form-string]
+       (clojure.core/defn -user-eval [id ns-sym form-string plen plev]
          (let [out-buf (java.io.StringWriter.)
                err-buf (java.io.StringWriter.)]
            (binding [*out* out-buf *err* err-buf
-                     *ns* (or (find-ns ns-sym) (find-ns 'user))]
+                     *ns* (or (find-ns ns-sym) (find-ns 'user))
+                     *print-length* plen
+                     *print-level*  plev]
              (try
-               (let [v (eval (read-string (str \"(do\\n\" form-string \"\\n)\")))]
-                 {:port/id id :tag :ok :val (pr-str v)
+               (let [v (eval (read-string (str \"(do\\n\" form-string \"\\n)\")))
+                     pp (binding [*print-length* plen *print-level* plev]
+                          (clojure.string/trimr
+                           (with-out-str (clojure.pprint/pprint v))))]
+                 {:port/id id :tag :ok :val pp
                   :out (str out-buf) :err (str err-buf)
                   :ns (str (ns-name *ns*))})
                (catch Throwable t
@@ -55,9 +79,11 @@
                   :out (str out-buf) :err (str err-buf)}))))))"
   "Clojure form sent on the tool socket on connect.
 Defines `port.tooling/-eval' (the wrapper used by `port-tooling-call'
-for internal helper queries) and `port.tooling/-user-eval' (the
+for internal helper queries; uses `pr-str' so the result can be
+re-parsed on the Elisp side) and `port.tooling/-user-eval' (the
 namespace-aware variant used for interactive evaluation from source
-buffers).")
+buffers; uses `clojure.pprint/pprint' bounded by the caller-supplied
+print-length / print-level).")
 
 (defun port-tooling-install (session)
   "Install the tool-socket handler on SESSION and send the bootstrap form."
@@ -85,13 +111,21 @@ NS is a Clojure namespace name as a string or symbol; if it can't
 be resolved on the JVM side, evaluation falls back to the `user'
 namespace.  CODE is a Clojure source string, possibly containing
 several top-level forms (the wrapper splices them into a `do').
-CALLBACK is invoked with the parsed result alist (same shape as
+The returned value is pretty-printed under `port-print-length' /
+`port-print-level' caps before being delivered.  CALLBACK is
+invoked with the parsed result alist (same shape as
 `port-tooling-call', plus `:ns' on success)."
   (let* ((id (port-session-next-id! session))
-         (wrapped (format "(port.tooling/-user-eval %d (quote %s) %S)"
-                          id ns code)))
+         (wrapped (format "(port.tooling/-user-eval %d (quote %s) %S %s %s)"
+                          id ns code
+                          (port-tooling--clj-int port-print-length)
+                          (port-tooling--clj-int port-print-level))))
     (port-session-register-callback session id callback)
     (port-client-send (port-session-tool-conn session) wrapped)))
+
+(defun port-tooling--clj-int (n)
+  "Render N as a Clojure literal: an integer or `nil'."
+  (if (integerp n) (number-to-string n) "nil"))
 
 (defun port-tooling-call-sync (session form-string &optional timeout)
   "Like `port-tooling-call' but block until the response arrives.

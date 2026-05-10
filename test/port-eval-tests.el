@@ -124,6 +124,8 @@
 (ert-deftest port-tooling-test-user-eval-form-construction ()
   "Verify the wire form sent for a `port-tooling-user-eval' call."
   (let* ((session (port-eval-tests--make-session))
+         (port-print-length 50)
+         (port-print-level 5)
          sent)
     (cl-letf (((symbol-function 'port-client-send)
                (lambda (_conn s) (setq sent s))))
@@ -131,7 +133,44 @@
     (should (string-match-p "(port\\.tooling/-user-eval [0-9]+ (quote my\\.ns)"
                             sent))
     ;; The code is sent as a properly quoted Clojure string literal.
-    (should (string-match-p (regexp-quote "\"(+ 1 2)\"") sent))))
+    (should (string-match-p (regexp-quote "\"(+ 1 2)\"") sent))
+    ;; The print-length and print-level integers follow.
+    (should (string-match-p "\" 50 5)$" sent))))
+
+(ert-deftest port-eval-test-summary-line-passes-single-line-through ()
+  (should (equal "42" (port-eval--summary-line "42")))
+  (should (equal "{:a 1, :b 2}" (port-eval--summary-line "{:a 1, :b 2}")))
+  (should (equal nil (port-eval--summary-line nil))))
+
+(ert-deftest port-eval-test-summary-line-truncates-multiline ()
+  (let ((s (port-eval--summary-line "{:a 1\n :b 2\n :c 3}")))
+    (should (string-prefix-p "{:a 1" s))
+    (should (string-suffix-p "…" s))
+    (should-not (string-match-p "\n" s))))
+
+(ert-deftest port-eval-test-display-minibuffer-truncates-multiline-value ()
+  (let* ((port-eval-display 'minibuffer)
+         (session (port-eval-tests--make-session))
+         (port-default-session session)
+         (msg (port-eval-tests--with-message
+               (lambda ()
+                 (port-eval--display-result
+                  '((:tag . :ok) (:val . "{:a 1\n :b 2}")
+                    (:out . "") (:err . "") (:ns . "user")))))))
+    (should (string-prefix-p "=> {:a 1" msg))
+    (should (string-suffix-p "…" msg))
+    (should-not (string-match-p "\n" msg))))
+
+(ert-deftest port-tooling-test-user-eval-passes-nil-print-caps ()
+  "When `port-print-length' / `port-print-level' are nil, send `nil'."
+  (let* ((session (port-eval-tests--make-session))
+         (port-print-length nil)
+         (port-print-level nil)
+         sent)
+    (cl-letf (((symbol-function 'port-client-send)
+               (lambda (_conn s) (setq sent s))))
+      (port-tooling-user-eval session "user" "x" #'ignore))
+    (should (string-match-p "\" nil nil)$" sent))))
 
 (ert-deftest port-tooling-test-user-eval-escapes-quotes ()
   "Strings containing quotes survive the Elisp -> Clojure round trip."

@@ -94,6 +94,18 @@ bootstrap) should be a no-op, not a process-filter error."
     (should (= 2 (port-session-next-id! s)))
     (should (= 3 (port-session-next-id! s)))))
 
+(ert-deftest port-tooling-test-bootstrap-uses-pprint ()
+  "The bootstrap should pull in clojure.pprint and use it from -user-eval."
+  (should (string-match-p "clojure\\.pprint" port-tooling-bootstrap))
+  (should (string-match-p "with-out-str (clojure\\.pprint/pprint v)"
+                          port-tooling-bootstrap)))
+
+(ert-deftest port-tooling-test-clj-int ()
+  (should (equal "5"   (port-tooling--clj-int 5)))
+  (should (equal "0"   (port-tooling--clj-int 0)))
+  (should (equal "nil" (port-tooling--clj-int nil)))
+  (should (equal "nil" (port-tooling--clj-int 'whatever))))
+
 (provide 'port-tooling-tests)
 
 ;;; port-tooling-tests.el ends here

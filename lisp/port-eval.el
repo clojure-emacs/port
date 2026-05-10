@@ -139,7 +139,16 @@ is `both'."
       (port-stacktrace-pop-from-result result)
       (message "%s" (propertize (or msg "<error>") 'face 'error)))
      (t
-      (message "=> %s" val)))))
+      (message "=> %s" (port-eval--summary-line val))))))
+
+(defun port-eval--summary-line (val)
+  "Return the first line of VAL, marked with an ellipsis if multi-line.
+Keeps the minibuffer readable when `clojure.pprint' produces
+multi-line output for big values; the full text is still in the
+REPL when `port-eval-display' is `both' (and stdout/stderr are
+always echoed to the REPL via `:out' / `:err')."
+  (let ((nl (and val (string-match "\n" val))))
+    (if nl (concat (substring val 0 nl) " …") val)))
 
 ;;;###autoload
 (defun port-eval-last-sexp ()
