@@ -14,3 +14,10 @@
 
 (setq byte-compile-docstring-max-column 100)
 (setq checkdoc-permit-comma-termination-flag t)
+
+;; package-lint runs file-by-file and otherwise treats every module as a
+;; standalone package, which generates a flood of false positives on a
+;; multi-file package whose Package-Requires lives in the main file.
+;; Pointing it at the main file makes those go away.
+(with-eval-after-load 'package-lint
+  (setq package-lint-main-file "lisp/port.el"))

@@ -24,9 +24,10 @@
 (require 'port-session)
 
 (defcustom port-print-length 50
-  "Cap on `*print-length*' applied during interactive evaluation.
+  "Maximum sequence length to print in an interactive eval result.
 Sequences longer than this are truncated with `...' in the value
-shown in the REPL/minibuffer.  Set to nil for no limit.
+shown in the REPL or minibuffer.  Set to nil for no limit.
+Internally this is bound to Clojure's *print-length* dynamic var.
 
 This only affects the tool-socket path (the default for
 `port-eval-display').  Values printed by io-prepl on the user
@@ -35,9 +36,10 @@ socket use the server's defaults."
   :group 'port)
 
 (defcustom port-print-level 5
-  "Cap on `*print-level*' applied during interactive evaluation.
+  "Maximum nesting depth to print in an interactive eval result.
 Nested structures deeper than this are abbreviated with `#'.
-Set to nil for no limit.  See `port-print-length' for the scope."
+Set to nil for no limit.  Internally this is bound to Clojure's
+*print-level* dynamic var.  See `port-print-length' for scope."
   :type '(choice integer (const :tag "Unlimited" nil))
   :group 'port)
 
