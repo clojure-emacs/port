@@ -489,7 +489,6 @@ In rough priority order:
 
 ## Versioning
 
-Port follows semantic versioning loosely.  Until we hit `1.0.0`,
-breaking changes can land in minor releases — though we try to call
-them out in the `CHANGELOG`.  Between releases, the master branch
-carries a `-snapshot` suffix on the version.
+Port is pre-release.  Until a real `0.1.0` tag is cut, everything
+lives under `0.1.0-snapshot` and breaking changes can land without
+notice.
