@@ -19,6 +19,7 @@
 (require 'cl-lib)
 (require 'port-client)
 (require 'port-session)
+(require 'port-stacktrace)
 
 (defvar-local port--session nil
   "The `port-session' associated with this REPL buffer.")
@@ -144,22 +145,45 @@ MSG is an alist as produced by `port-client--parse-messages'."
   (let ((tag (alist-get :tag msg))
         (val (alist-get :val msg))
         (ns  (alist-get :ns msg)))
-    (port-repl--insert-output
-     (pcase tag
-       (:ret  (cons (port-repl--format-ret val msg) 'port-repl-result-face))
-       (:out  (cons val 'port-repl-stdout-face))
-       (:err  (cons val 'port-repl-stderr-face))
-       (:tap  (cons (format ";; tap> %s\n" val) 'port-repl-tap-face))
-       (_     (cons (format ";; %S %s\n" tag val) 'port-repl-tap-face))))
+    (cond
+     ((and (eq tag :ret) (alist-get :exception msg))
+      (port-repl--handle-exception val))
+     (t
+      (port-repl--insert-output
+       (pcase tag
+         (:ret  (cons (format "%s\n" val) 'port-repl-result-face))
+         (:out  (cons val 'port-repl-stdout-face))
+         (:err  (cons val 'port-repl-stderr-face))
+         (:tap  (cons (format ";; tap> %s\n" val) 'port-repl-tap-face))
+         (_     (cons (format ";; %S %s\n" tag val) 'port-repl-tap-face))))))
     (when (and (eq tag :ret) ns)
       (setf (port-client-current-ns port--connection) ns)
       (port-repl--insert-prompt))))
 
-(defun port-repl--format-ret (val msg)
-  "Format the printed return VAL from MSG, with trailing newline."
-  (if (alist-get :exception msg)
-      (format "%s\n" val)
-    (format "%s\n" val)))
+(defun port-repl--handle-exception (val)
+  "Handle a `:ret' with `:exception true', whose printed map is VAL.
+Inserts a concise one-line summary into the REPL and pops the
+stacktrace buffer so the user can drill in."
+  (let* ((parsed (port-stacktrace-parse val))
+         (summary (port-repl--exception-summary parsed val)))
+    (port-repl--insert-output (cons summary 'port-repl-stderr-face))
+    (when parsed
+      (port-stacktrace-display parsed))))
+
+(defun port-repl--exception-summary (parsed raw)
+  "Build a one-line summary string for the exception PARSED (or RAW fallback)."
+  (cond
+   ((null parsed)
+    (format "%s\n" raw))
+   (t
+    (let* ((via   (alist-get :via parsed))
+           (first (car via))
+           (type  (and first (alist-get :type first)))
+           (msg   (or (and first (alist-get :message first))
+                      (alist-get :cause parsed))))
+      (format ";; %s%s\n"
+              (if type (format "%s: " type) "")
+              (or msg "<unknown error>"))))))
 
 (defun port-repl--insert-output (text+face)
   "Insert TEXT+FACE (a (TEXT . FACE) pair) into the REPL buffer.

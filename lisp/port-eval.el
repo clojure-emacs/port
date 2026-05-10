@@ -29,6 +29,7 @@
 (require 'port-client)
 (require 'port-session)
 (require 'port-repl)
+(require 'port-stacktrace)
 (require 'port-tooling)
 
 (declare-function clojure-find-ns "ext:clojure-mode")
@@ -135,6 +136,7 @@ is `both'."
               (port-repl--insert-prompt))))))
     (cond
      ((eq tag :err)
+      (port-stacktrace-pop-from-result result)
       (message "%s" (propertize (or msg "<error>") 'face 'error)))
      (t
       (message "=> %s" val)))))

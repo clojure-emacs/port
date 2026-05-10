@@ -72,6 +72,43 @@ above the prompt and the typed input should be preserved."
             (should (string-match-p ";; tap> ping\nuser=> abc" text))))
       (kill-buffer buf))))
 
+(ert-deftest port-repl-test-exception-renders-summary-and-pops-buffer ()
+  "An exception :ret should emit a one-line summary inline and
+populate the *port-stacktrace* buffer."
+  (let ((buf (port-repl-tests--fresh-buffer))
+        (port-stacktrace-auto-open nil))
+    (unwind-protect
+        (with-current-buffer buf
+          (let ((inhibit-read-only t))
+            (goto-char (point-max))
+            (set-marker port-repl-prompt-marker (point))
+            (set-marker port-repl-input-start-marker (point))
+            (setq port-repl-prompt-active-p nil))
+          (port-repl-handle-message
+           `((:tag . :ret)
+             (:val . ,(concat "{:via [{:type clojure.lang.ExceptionInfo"
+                              " :message \"boom\" :data {:foo 1}}]"
+                              " :trace [[user$f invokeStatic \"x.clj\" 1]]"
+                              " :cause \"boom\"}"))
+             (:ns . "user")
+             (:exception . t)))
+          (let ((text (port-repl-tests--visible-text buf)))
+            (should (string-match-p "ExceptionInfo: boom" text))
+            ;; The raw printed map should not have been dumped.
+            (should-not (string-match-p ":trace \\[" text))
+            ;; A fresh prompt should follow.
+            (should (string-match-p "user=> $" text)))
+          (let ((stbuf (get-buffer port-stacktrace-buffer-name)))
+            (should stbuf)
+            (with-current-buffer stbuf
+              (let ((stext (buffer-substring-no-properties
+                            (point-min) (point-max))))
+                (should (string-match-p "ExceptionInfo" stext))
+                (should (string-match-p "x.clj:1" stext))))))
+      (kill-buffer buf)
+      (when (get-buffer port-stacktrace-buffer-name)
+        (kill-buffer port-stacktrace-buffer-name)))))
+
 (provide 'port-repl-tests)
 
 ;;; port-repl-tests.el ends here

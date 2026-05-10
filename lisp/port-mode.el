@@ -22,6 +22,7 @@
 (require 'port-repl)
 (require 'port-eldoc)
 (require 'port-completion)
+(require 'port-stacktrace)
 (require 'port-xref)
 
 (defun port--symbol-at-point ()
@@ -54,7 +55,10 @@ the output."
          (when (and val (not (member val '("nil" "\"\"" ""))))
            (port-repl-emit-text val))))
       (:err
-       (port-repl-emit-text (alist-get :ex result) 'port-repl-stderr-face)))))
+       (let ((ex-msg (or (alist-get :ex-message result)
+                         (alist-get :ex result))))
+         (port-repl-emit-text (format ";; %s\n" ex-msg) 'port-repl-stderr-face)
+         (port-stacktrace-pop-from-result result))))))
 
 ;;;###autoload
 (defun port-doc (sym)
