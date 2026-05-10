@@ -4,7 +4,8 @@
 
 Initial prototype.
 
-- TCP prepl client with a small EDN-ish reader.
+- TCP prepl client with a small EDN-ish reader (now handles maps,
+  vectors, and lists with simple leaf values).
 - Two-socket session model: a user socket drives the REPL with raw
   streaming output, and a separate tool socket carries helper-command
   requests with reliable request/response correlation via a small
@@ -27,3 +28,8 @@ Initial prototype.
 - Helper commands powered by Clojure evaluation: doc, source, apropos,
   macroexpand-1, macroexpand, load-file, set-ns.
 - `port-mode` minor mode for Clojure source buffers.
+- Structured stacktrace buffer (`*port-stacktrace*`): on `:exception
+  true` (and on `:tag :err` from the tool socket) Port renders a
+  concise one-line summary inline and pops a navigable buffer with
+  the cause chain, ex-data, and a filtered trace.  `RET` on a frame
+  jumps to the source when the file resolves locally.

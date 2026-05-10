@@ -167,6 +167,7 @@ lisp/
 ├── port-mode.el         minor mode + helper commands
 ├── port-eldoc.el        async arglist lookup (eldoc-documentation-functions)
 ├── port-completion.el   sync ns-map walk for completion-at-point
+├── port-stacktrace.el   parsed Throwable->map renderer + frame navigation
 └── port-xref.el         var meta -> file:line for find-definition (M-.)
 ```
 
@@ -335,28 +336,48 @@ relative paths under `default-directory`.  Files inside jars (the
 common case for `clojure.core` and friends) are messaged but not
 opened — that's a known limitation.
 
+### `port-stacktrace.el`
+
+The renderer for parsed `Throwable->map` data.  Both error paths
+funnel here:
+
+- The user socket: when a `:ret` arrives with `:exception true`, the
+  REPL handler parses the printed `Throwable->map` from `:val` and
+  hands it to `port-stacktrace-display`.  The REPL itself only emits
+  a one-line `Type: message` summary so the prompt stays clean.
+- The tool socket: when a wrapped call returns `:tag :err`, the
+  result map carries `:ex` (the printed `Throwable->map`) and
+  `:ex-message`.  Both `port-mode`'s helper-command emitter and
+  `port-eval--display-result` call `port-stacktrace-pop-from-result`,
+  which parses `:ex` and pops the buffer if it parses cleanly.
+
+The buffer shows the `:via` chain at the top — each entry rendered
+as `<Type>: <message>` plus expanded `:data` if any — followed by
+the `:trace` frames.  Internal frames (`clojure.lang.*`,
+`clojure.core$*`, `java.*`, `sun.*`, `nrepl.*`) are filtered by
+default; the user can flip `port-stacktrace-hide-clojure-internals`
+to see everything.  `RET` on a frame attempts to visit its source,
+trying `default-directory` and a few common project source roots.
+
 ## Wire format and the EDN-ish reader
 
 prepl emits one EDN map per message, separated by newlines (`prn` adds
 the newline).  The values we encounter in practice are limited:
-strings, integers, keywords, maps, booleans, nil.  The reader in
-`port-client.el` handles exactly that subset — no vectors, lists,
-sets, namespaced map shorthand, metadata, character literals,
-ratios, big decimals, regexes, or tagged literals.
+strings, integers, keywords, maps, vectors, lists, booleans, nil.
+The reader in `port-client.el` handles exactly that subset — no sets,
+namespaced map shorthand, metadata, character literals, ratios, big
+decimals, regexes, or tagged literals.
 
 This is enough because:
 
 - Outer prepl messages are flat maps with string/keyword/integer/bool
   leaves.
 - Inner result maps from the bootstrap match the same shape because
-  `:val` and `:ex` are `pr-str`'d into strings.
+  `:val` and `:ex` are `pr-str`'d into strings.  The stacktrace
+  module re-parses those strings into nested vectors+maps using the
+  same reader.
 - Helper-command return values are either strings (most cases) or
   small maps with simple leaves (`port-xref`).
-
-When that stops being enough — for example when adding structured
-stacktrace rendering — extending the reader to handle vectors and
-lists is straightforward (parallel to the existing map case in
-`port-client--read-map`).
 
 The reader signals a custom `port-edn-incomplete` condition for
 truncated input, which the filter catches to buffer leftover bytes
@@ -406,11 +427,10 @@ architecture.
   shadow-cljs, and per-project alias selection (`-A:dev` etc.) are not
   yet supported; users with those setups can still launch the prepl
   manually and `M-x port-connect`.
-- No structured stacktrace buffer.  Exceptions print as the prepl
-  emits them.  The infrastructure is there — `:exception true` is
-  detected on `:ret` messages — it just isn't yet rendered into a
-  navigable buffer.
-- No jar source resolution for `M-.`.
+- No jar source resolution for `M-.` or for trace frames.  Frames
+  whose `:file` is a classpath-relative basename only resolve when
+  the file is found under `default-directory` or a common project
+  source root.
 - Completion is synchronous; under network latency or auto-popup
   setups (corfu, company auto-complete) it can feel sluggish.
 - Single-session only.  Connecting again replaces the previous
@@ -424,25 +444,20 @@ architecture.
 
 In rough priority order:
 
-1. Structured stacktrace buffer: detect `:exception true` on the user
-   socket, parse the printed `Throwable->map`, render in a dedicated
-   buffer with navigation.
-2. Jar source resolution: when `:file` resolves under a jar URL, ask
+1. Jar source resolution: when `:file` resolves under a jar URL, ask
    the prepl to extract the file's contents (or use Emacs's
    `archive-mode`/tramp-archive support).
-3. Test runner integration (`clojure.test`).
-4. Pretty-printed and length-capped result rendering in the REPL.
+2. Pretty-printed and length-capped result rendering in the REPL.
+3. Persistent input history (per-project history file).
+4. Test runner integration (`clojure.test`).
 5. xref backend: replace the standalone `port-find-definition`
    command with an `xref-backend-functions` implementation, which
    gets us references and apropos UI for free.
 6. Jack-in for babashka and shadow-cljs, plus per-project alias
    selection.
-7. Reader extension to support vectors and lists, removing the need
-   for `pr-str` on the Clojure side of helper commands.
-8. Multi-session support keyed per clojure-mode buffer.
-9. Persistent input history (per-project history file).
-10. CIDER-style result overlays (deliberately listed last; the
-    "all output goes to the REPL" UX is a deliberate choice).
+7. Multi-session support keyed per clojure-mode buffer.
+8. CIDER-style result overlays (deliberately listed last; the
+   "all output goes to the REPL" UX is a deliberate choice).
 
 ## Versioning
 

@@ -174,10 +174,8 @@ the REPL buffer.
 
 ## Limitations (today)
 
-- No `port-jack-in`; you start the prepl yourself.
 - No inline overlays or debugger. (The tool socket makes these
   tractable; they're just not implemented yet.)
-- No structured error rendering; stacktraces print as the server emits them.
 - No persistent input history.
 
 ## Design
