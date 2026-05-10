@@ -147,19 +147,24 @@ If you use [`use-package`](https://github.com/jwiegley/use-package) on Emacs
 ```elisp
 (use-package port
   :vc (:url "https://github.com/clojure-emacs/port" :branch "main" :lisp-dir "lisp")
-  :hook (clojure-mode . port-mode))
+  :hook ((clojure-mode    . port-mode)
+         (clojure-ts-mode . port-mode)))
 ```
 
 The `:lisp-dir "lisp"` is needed because Port's sources live under `lisp/`
 rather than at the repository root; without it `package-vc-install` won't
 add that directory to `load-path` and byte-compilation will fail.
 
+Port doesn't depend on any specific Clojure mode -- hook it onto whichever
+one(s) you actually use (`clojure-mode`, `clojure-ts-mode`, or both).
+
 For a manual checkout (e.g. while contributing):
 
 ```elisp
 (add-to-list 'load-path "/path/to/port/lisp")
 (require 'port)
-(add-hook 'clojure-mode-hook #'port-mode)
+(add-hook 'clojure-mode-hook    #'port-mode)
+(add-hook 'clojure-ts-mode-hook #'port-mode)
 ```
 
 ## Connecting from Emacs
