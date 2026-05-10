@@ -27,12 +27,12 @@
     (substring-no-properties s)))
 
 (defun port-xref--query (sym ns)
-  "Build the Clojure form that returns SYM's source location in NS.
+  "Build the Clojure form returning SYM's source location in NS.
 The map carries `:file' / `:line' from var metadata, plus `:url'
-(the result of `clojure.java.io/resource' for the file) and
-`:contents' (the slurped string when the URL is a jar URL).  The
-URL/contents pair is what makes M-. work for vars whose source
-lives inside a jar."
+\(the result of `clojure.java.io/resource' for the file) and
+`:contents' \(the slurped string when the URL is a jar URL).  The
+URL / contents pair is what makes \\[port-find-definition] work for
+vars whose source lives inside a jar."
   (format
    (concat "(when-let [ns (or (find-ns (quote %s)) (find-ns 'user))]"
            "  (when-let [v (try (ns-resolve ns (quote %s))"

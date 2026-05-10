@@ -74,7 +74,9 @@ Return the project root or `default-directory' if no marker is found."
       (user-error "Port: no free ports in %d-%d" lo hi))))
 
 (defun port-jack-in--server-form (port)
-  "Return the Clojure -e form that starts a prepl on PORT and blocks."
+  "Return the Clojure `-e' form to start a prepl on PORT and block.
+It starts an io-prepl server and parks on a never-delivered promise
+so the JVM doesn't exit when the main thread returns."
   (format
    (concat "(do (clojure.core.server/start-server"
            " {:name \"port\" :port %d"
@@ -109,7 +111,8 @@ Return non-nil on success."
       nil)))
 
 (defun port-jack-in--sentinel (proc event)
-  "Tear down the session if its JVM PROC dies unexpectedly."
+  "Tear down the session if its JVM PROC dies unexpectedly.
+EVENT is the process-state string forwarded from Emacs."
   (when (memq (process-status proc) '(closed exit failed signal))
     (when (and port-default-session
                (eq proc (port-session-jvm-process port-default-session)))

@@ -78,7 +78,7 @@ Possible values:
                                 #'port-eval--display-result))))))
 
 (defun port-eval--current-ns (session)
-  "Best-effort namespace name (string) for evaluating from the current buffer.
+  "Best-effort namespace name (string) for SESSION's current buffer.
 Falls back to the user socket's tracked ns, then to \"user\"."
   (or (and (fboundp 'clojure-find-ns) (clojure-find-ns))
       (port-client-current-ns (port-session-user-conn session))

@@ -82,8 +82,8 @@ Defines `port.tooling/-eval' (the wrapper used by `port-tooling-call'
 for internal helper queries; uses `pr-str' so the result can be
 re-parsed on the Elisp side) and `port.tooling/-user-eval' (the
 namespace-aware variant used for interactive evaluation from source
-buffers; uses `clojure.pprint/pprint' bounded by the caller-supplied
-print-length / print-level).")
+buffers; uses `clojure.pprint/pprint' bounded by caller-supplied
+print caps).")
 
 (defun port-tooling-install (session)
   "Install the tool-socket handler on SESSION and send the bootstrap form."
@@ -124,14 +124,15 @@ invoked with the parsed result alist (same shape as
     (port-client-send (port-session-tool-conn session) wrapped)))
 
 (defun port-tooling--clj-int (n)
-  "Render N as a Clojure literal: an integer or `nil'."
+  "Render N as a Clojure literal: an integer or the string \"nil\"."
   (if (integerp n) (number-to-string n) "nil"))
 
 (defun port-tooling-call-sync (session form-string &optional timeout)
-  "Like `port-tooling-call' but block until the response arrives.
-TIMEOUT defaults to 2 seconds.  Returns the result alist, or nil on
-timeout.  Suitable for use from a `completion-at-point-functions'
-member, where the surrounding API is synchronous."
+  "Like `port-tooling-call' on SESSION, but block until a response arrives.
+FORM-STRING is the Clojure form.  TIMEOUT defaults to 2 seconds.
+Returns the result alist, or nil on timeout.  Suitable for use
+from a `completion-at-point-functions' member, where the
+surrounding API is synchronous."
   (let* ((done nil)
          (result nil)
          (deadline (+ (float-time) (or timeout 2.0)))
@@ -164,8 +165,8 @@ those out so callers can do simple non-nil checks."
 
 (defun port-tooling-decode-val (val)
   "Decode VAL — a printed Clojure value as it appears in a result map's `:val'.
-For a printed string returns the unwrapped string; for `nil', a number,
-keyword, or map returns the corresponding Elisp value.  Returns VAL
+For a printed string return the unwrapped string; for nil, a number,
+keyword, or map return the corresponding Elisp value.  Return VAL
 unchanged if it can't be parsed."
   (if (stringp val)
       (condition-case _

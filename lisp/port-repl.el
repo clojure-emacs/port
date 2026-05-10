@@ -273,15 +273,15 @@ stacktrace buffer so the user can drill in."
               (if type (format "%s: " type) "")
               (or msg "<unknown error>"))))))
 
-(defun port-repl--insert-output (text+face)
-  "Insert TEXT+FACE (a (TEXT . FACE) pair) into the REPL buffer.
+(defun port-repl--insert-output (pair)
+  "Insert PAIR (a cons of text and face) into the REPL buffer.
 If a prompt is currently displayed (`port-repl-prompt-active-p'),
 insert above it -- preserving any typed-but-unsent input -- so the
 prompt and the user's typing stay at the bottom.  Otherwise (e.g.
 between sending a form and receiving its first response message)
 just append at point-max."
-  (let* ((text (car text+face))
-         (face (cdr text+face))
+  (let* ((text (car pair))
+         (face (cdr pair))
          (inhibit-read-only t))
     (cond
      (port-repl-prompt-active-p

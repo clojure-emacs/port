@@ -38,7 +38,7 @@ Returns nil if point is not inside a list, or there is no symbol there."
       "user"))
 
 (defun port-eldoc--query (sym ns)
-  "Build the Clojure form that resolves SYM in NS and returns its arglists string."
+  "Build the Clojure form that resolves SYM in NS and return its arglists string."
   (format
    (concat "(when-let [ns (or (find-ns (quote %s)) (find-ns 'user))]"
            " (when-let [v (try (ns-resolve ns (quote %s))"
