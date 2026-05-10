@@ -35,6 +35,11 @@ Initial prototype.
 - Helper commands powered by Clojure evaluation: doc, source, apropos,
   macroexpand-1, macroexpand, load-file, set-ns.
 - `port-mode` minor mode for Clojure source buffers.
+- Persistent REPL input history.  Each REPL buffer reads/writes
+  `<project-root>/.port-history` (configurable via
+  `port-repl-history-file`); `M-p` / `M-n` walk the history across
+  sessions.  Capacity is `port-repl-history-size` (default 1000)
+  and adjacent duplicates are dropped.
 - Structured stacktrace buffer (`*port-stacktrace*`): on `:exception
   true` (and on `:tag :err` from the tool socket) Port renders a
   concise one-line summary inline and pops a navigable buffer with

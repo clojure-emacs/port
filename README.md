@@ -176,7 +176,6 @@ the REPL buffer.
 
 - No inline overlays or debugger. (The tool socket makes these
   tractable; they're just not implemented yet.)
-- No persistent input history.
 
 ## Design
 

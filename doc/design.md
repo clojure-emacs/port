@@ -25,7 +25,8 @@ just want to use Port, the [README](../README.md) is enough.
   deliberately deferred.
 - ClojureScript-specific tooling.  Plain Clojure prepl is the focus;
   ClojureScript via shadow-cljs/figwheel etc. is out of scope.
-- Persistent project state (history, sessions across restarts).
+- Persistent session state across restarts (history is persisted,
+  but anything else — namespaces, defs, server state — is not).
 
 ## Background: prepl
 
@@ -280,6 +281,14 @@ emits the output above where the prompt was, redraws the prompt, and
 re-inserts the saved input.  This is uglier than it sounds but
 preserves the typing UX.
 
+Input history is persisted between sessions.  By default we write
+to `<project-root>/.port-history` (one `prin1`'d entry per line);
+`port-repl-history-file` overrides the path or disables persistence
+with `t`.  The file is loaded once at REPL-buffer creation, trimmed
+to `port-repl-history-size` entries, and appended to on each send.
+Adjacent duplicates are skipped so hammering on `RET` doesn't fill
+the ring.
+
 ### `port-eval.el` and `port-mode.el`
 
 `port-eval-string` is the only path code from a source buffer takes
@@ -454,30 +463,28 @@ architecture.
 - `port-repl-interrupt` is a stub.  prepl has no interrupt op;
   implementing it requires either out-of-band signaling or a
   process-level kill.
-- No persistent input history.
 
 ## Future directions
 
 In rough priority order:
 
-1. Persistent input history (per-project history file).
-2. Test runner integration (`clojure.test`).
-3. xref backend: replace the standalone `port-find-definition`
+1. Test runner integration (`clojure.test`).
+2. xref backend: replace the standalone `port-find-definition`
    command with an `xref-backend-functions` implementation, which
    gets us references and apropos UI for free.
-4. Jack-in for babashka and shadow-cljs, plus per-project alias
+3. Jack-in for babashka and shadow-cljs, plus per-project alias
    selection.
-5. Multi-session support keyed per clojure-mode buffer.
-6. Trace-frame source resolution via the tool socket (round-trip
+4. Multi-session support keyed per clojure-mode buffer.
+5. Trace-frame source resolution via the tool socket (round-trip
    to `clojure.java.io/resource` per frame), so jar-only frames
    become navigable too.
-7. Pretty-printing on the user socket (REPL-typed input).  The
+6. Pretty-printing on the user socket (REPL-typed input).  The
    tool-socket eval path already pretty-prints, but vanilla
    io-prepl on the user socket prints with `pr-str`.  Fixing this
    needs either a custom `:valf` at server-start (which we control
    in jack-in but not in `port-connect`) or post-processing in the
    client.
-8. CIDER-style result overlays (deliberately listed last; the
+7. CIDER-style result overlays (deliberately listed last; the
    "all output goes to the REPL" UX is a deliberate choice).
 
 ## Versioning
