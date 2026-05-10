@@ -198,6 +198,18 @@ For the architecture, the rationale behind the two-socket model, and a
 walkthrough of how each piece fits together, see
 [`doc/design.md`](doc/design.md).
 
+## FAQ
+
+### Why is it called Port?
+
+Two reasons.  I started this project while spending some time in
+Porto, and there's already a tradition of naming Clojure-on-editor
+tools after drinks: [CIDER][], [Calva][] (after Calvados, the
+Norman apple brandy).  Port wine fit, and the protocol is `prepl`
+over a TCP **port**, so the pun was hard to pass up.
+
+[Calva]: https://calva.io
+
 ## License
 
 Distributed under the GNU General Public License, version 3 or later.
