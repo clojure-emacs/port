@@ -4,10 +4,10 @@
 
 ;; Author: Bozhidar Batsov <bozhidar@batsov.dev>
 ;; Maintainer: Bozhidar Batsov <bozhidar@batsov.dev>
-;; Homepage: https://github.com/bbatsov/port
+;; Homepage: https://github.com/clojure-emacs/port
 ;; Keywords: languages, clojure, port, prepl
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "28") (clojure-mode "5.19"))
+;; Package-Requires: ((emacs "28.1") (clojure-mode "5.19"))
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
