@@ -180,6 +180,15 @@ file is removed afterwards."
           (should (equal path (port-repl--resolve-history-file))))
       (delete-file path))))
 
+(ert-deftest port-repl-test-kill-buffer-shuts-down-session ()
+  "Killing the REPL buffer should run `port-session-shutdown'."
+  (let* ((called nil)
+         (buf (port-repl-tests--fresh-buffer)))
+    (cl-letf (((symbol-function 'port-session-shutdown)
+               (lambda (s) (setq called s))))
+      (kill-buffer buf))
+    (should called)))
+
 (provide 'port-repl-tests)
 
 ;;; port-repl-tests.el ends here

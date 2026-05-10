@@ -131,6 +131,7 @@ neither is installed."
       (setq port-repl-prompt-marker (make-marker))
       (setq port-repl--history-file (port-repl--resolve-history-file))
       (port-repl--load-history)
+      (add-hook 'kill-buffer-hook #'port-repl--on-kill nil t)
       (let ((inhibit-read-only t))
         (erase-buffer)
         (insert (format ";; Port %s connected to %s:%d\n"
@@ -141,6 +142,19 @@ neither is installed."
     (setf (port-client-repl-buffer conn) buf)
     (setf (port-session-repl-buffer session) buf)
     buf))
+
+(defun port-repl--on-kill ()
+  "Tear down the session when its REPL buffer is killed.
+Runs from `kill-buffer-hook'.  Tearing down here ensures that
+`C-x k' on the REPL also closes the prepl sockets and kills the
+JVM (when we spawned it), so we don't leak processes."
+  (when-let* ((session port--session))
+    ;; Detach from the connection's repl-buffer slot first so the
+    ;; sentinel doesn't try to write a "connection closed" line into
+    ;; the buffer that's currently being killed.
+    (when-let ((conn (port-session-user-conn session)))
+      (setf (port-client-repl-buffer conn) nil))
+    (port-session-shutdown session)))
 
 (declare-function port-jack-in--detect-project-root "port-jack-in")
 
