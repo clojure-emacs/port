@@ -7,6 +7,21 @@ spirit of [CIDER](https://github.com/clojure-emacs/cider) and
 
 > Status: prototype / MVP. Expect rough edges.
 
+## Features
+
+- `M-x port` jacks in (auto-detects `deps.edn` / `project.clj` /
+  `bb.edn`), or `M-x port-connect` attaches to a prepl you started
+  yourself.
+- Single-buffer REPL with persistent input history.
+- Interactive evaluation from source buffers (`C-c C-e`,
+  `C-c C-c`, …), pretty-printed via `clojure.pprint` with
+  configurable length/level caps.
+- Structured stacktrace buffer for exceptions: cause chain,
+  ex-data, navigable frames.
+- Eldoc, completion-at-point, doc/source/apropos/macroexpand
+  helpers, and `M-.` find-definition that follows into jar
+  sources.
+
 ## Why prepl?
 
 prepl (`clojure.core.server/io-prepl`) is a streaming text protocol that ships
