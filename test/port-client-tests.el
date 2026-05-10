@@ -66,6 +66,51 @@
          (msgs (car (port-client--parse-messages input))))
     (should (equal "say \"hi\"\n" (alist-get :val (car msgs))))))
 
+(ert-deftest port-client-test-read-vector ()
+  (let ((res (port-client--read "[1 2 3]" 0)))
+    (should (equal '(1 2 3) (car res)))
+    (should (= 7 (cdr res)))))
+
+(ert-deftest port-client-test-read-empty-vector ()
+  (let ((res (port-client--read "[]" 0)))
+    (should (equal nil (car res)))
+    (should (= 2 (cdr res)))))
+
+(ert-deftest port-client-test-read-list ()
+  (let ((res (port-client--read "(1 2 3)" 0)))
+    (should (equal '(1 2 3) (car res)))
+    (should (= 7 (cdr res)))))
+
+(ert-deftest port-client-test-read-nested-vector ()
+  (let ((res (port-client--read "[[1 2] [3 4]]" 0)))
+    (should (equal '((1 2) (3 4)) (car res)))))
+
+(ert-deftest port-client-test-read-vector-in-map ()
+  (let* ((res (port-client--read "{:trace [1 2 3]}" 0))
+         (m (car res)))
+    (should (equal '(1 2 3) (alist-get :trace m)))))
+
+(ert-deftest port-client-test-read-throwable-map ()
+  ;; A condensed but representative Throwable->map shape.
+  (let* ((s (concat "{:via [{:type clojure.lang.ExceptionInfo"
+                    " :message \"boom\" :data {:foo 1}}]"
+                    " :trace [[clojure.core$eval invoke \"core.clj\" 3214]]"
+                    " :cause \"boom\"}"))
+         (m (car (port-client--read s 0))))
+    (should (equal "boom" (alist-get :cause m)))
+    (let ((via (alist-get :via m)))
+      (should (= 1 (length via)))
+      (should (equal "boom" (alist-get :message (car via)))))
+    (let ((trace (alist-get :trace m)))
+      (should (= 1 (length trace)))
+      (should (equal "core.clj" (nth 2 (car trace))))
+      (should (= 3214 (nth 3 (car trace)))))))
+
+(ert-deftest port-client-test-read-vector-incomplete ()
+  (should-error
+   (port-client--read "[1 2" 0)
+   :type 'port-edn-incomplete))
+
 (ert-deftest port-client-test-input-complete-p ()
   (should (port-repl--input-complete-p "(+ 1 2)"))
   (should (port-repl--input-complete-p "42"))

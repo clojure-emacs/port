@@ -135,6 +135,8 @@ LEFTOVER is the unparsed tail."
   (let ((c (aref s pos)))
     (cond
      ((eq c ?\{) (port-client--read-map s (1+ pos)))
+     ((eq c ?\[) (port-client--read-seq s (1+ pos) ?\]))
+     ((eq c ?\() (port-client--read-seq s (1+ pos) ?\)))
      ((eq c ?\") (port-client--read-string s (1+ pos)))
      ((eq c ?\:) (port-client--read-keyword s (1+ pos)))
      ((or (and (>= c ?0) (<= c ?9))
@@ -170,6 +172,21 @@ Return ((KEY . VAL) ...) as an alist, plus new position."
                (kp (cdr k))
                (v (port-client--read s kp)))
           (push (cons kv (car v)) entries)
+          (setq pos (cdr v)))))))
+
+(defun port-client--read-seq (s pos close)
+  "Read a vector or list body from S at POS until CLOSE (`]' or `)').
+Return (LIST . NEW-POS) where LIST is an Elisp list of the elements."
+  (let ((items '()))
+    (catch 'done
+      (while t
+        (setq pos (port-client--skip-ws s pos))
+        (when (>= pos (length s))
+          (signal 'port-edn-incomplete nil))
+        (when (eq (aref s pos) close)
+          (throw 'done (cons (nreverse items) (1+ pos))))
+        (let ((v (port-client--read s pos)))
+          (push (car v) items)
           (setq pos (cdr v)))))))
 
 (defun port-client--read-string (s pos)
