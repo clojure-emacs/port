@@ -9,7 +9,8 @@
 
 ;;; Commentary:
 
-;; The Port minor mode provides keybindings for `clojure-mode' buffers
+;; The Port minor mode provides keybindings for Clojure source buffers
+;; (any major mode -- typically `clojure-mode' or `clojure-ts-mode')
 ;; plus a small set of helper commands implemented entirely by sending
 ;; Clojure forms to the prepl.  All results land in the REPL buffer.
 
@@ -130,17 +131,9 @@ in-ns immediately, so we must send directly on the user socket
 where the namespace actually persists."
   (interactive
    (list (read-string "Namespace: "
-                      (or (port--current-buffer-ns) "user"))))
+                      (or (port-current-buffer-ns) "user"))))
   (port-eval--send-via-repl (port-current-session)
                             (format "(in-ns '%s)" ns)))
-
-(defun port--current-buffer-ns ()
-  "Best-effort namespace extraction from the current Clojure buffer."
-  (save-excursion
-    (goto-char (point-min))
-    (when (re-search-forward
-           "(ns[ \t\n]+\\([a-zA-Z0-9._/+!?<>=*$&%-]+\\)" nil t)
-      (match-string-no-properties 1))))
 
 ;;;###autoload
 (defun port-switch-to-repl ()

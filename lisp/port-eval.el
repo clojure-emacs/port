@@ -34,6 +34,17 @@
 
 (declare-function clojure-find-ns "ext:clojure-mode")
 
+(defun port-current-buffer-ns ()
+  "Best-effort namespace extraction from the current Clojure source buffer.
+Walks to the top of the buffer and matches the first `ns' form
+with a regex.  Used as a fallback when `clojure-find-ns' isn't
+available (e.g. when only `clojure-ts-mode' is loaded)."
+  (save-excursion
+    (goto-char (point-min))
+    (when (re-search-forward
+           "(ns[ \t\n]+\\([a-zA-Z0-9._/+!?<>=*$&%-]+\\)" nil t)
+      (match-string-no-properties 1))))
+
 (defcustom port-eval-display 'minibuffer
   "Where to display the result of interactive evaluation commands.
 The commands `port-eval-last-sexp', `port-eval-defun-at-point',
@@ -79,8 +90,11 @@ Possible values:
 
 (defun port-eval--current-ns (session)
   "Best-effort namespace name (string) for SESSION's current buffer.
-Falls back to the user socket's tracked ns, then to \"user\"."
+Tries `clojure-find-ns' if loaded (clojure-mode), otherwise our
+own regex-based fallback, then the user socket's tracked ns,
+then \"user\"."
   (or (and (fboundp 'clojure-find-ns) (clojure-find-ns))
+      (port-current-buffer-ns)
       (port-client-current-ns (port-session-user-conn session))
       "user"))
 

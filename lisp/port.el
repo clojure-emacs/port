@@ -7,7 +7,7 @@
 ;; Homepage: https://github.com/clojure-emacs/port
 ;; Keywords: languages, clojure, port, prepl
 ;; Version: 0.1.0-snapshot
-;; Package-Requires: ((emacs "28.1") (clojure-mode "5.19"))
+;; Package-Requires: ((emacs "28.1"))
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by

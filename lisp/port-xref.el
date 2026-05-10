@@ -127,7 +127,7 @@ LINE is the 1-based line to jump to (or nil)."
           (erase-buffer)
           (insert contents))
         (goto-char (point-min))
-        (when (fboundp 'clojure-mode) (clojure-mode))
+        (port-xref--enable-clojure-mode)
         (setq buffer-read-only t)
         (set-buffer-modified-p nil)
         (setq-local port-xref--jar-url url)))
@@ -135,6 +135,15 @@ LINE is the 1-based line to jump to (or nil)."
     (when line
       (goto-char (point-min))
       (forward-line (1- line)))))
+
+(defun port-xref--enable-clojure-mode ()
+  "Enable a Clojure major mode in the current buffer if one is available.
+Tries `clojure-ts-mode' first (the tree-sitter mode), then
+`clojure-mode'.  Falls through silently when neither is loaded so
+the buffer is at least viewable."
+  (cond
+   ((fboundp 'clojure-ts-mode) (clojure-ts-mode))
+   ((fboundp 'clojure-mode)    (clojure-mode))))
 
 (defun port-xref--jar-buffer-name (url)
   "Build a readable buffer name from a jar URL."

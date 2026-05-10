@@ -114,12 +114,32 @@
     (cl-letf (((symbol-function 'clojure-find-ns) (lambda () "my.ns")))
       (should (equal "my.ns" (port-eval--current-ns session))))))
 
+(ert-deftest port-eval-test-current-ns-falls-back-to-regex ()
+  "Without `clojure-find-ns' the regex-based extractor takes over."
+  (let* ((session (port-eval-tests--make-session)))
+    (with-temp-buffer
+      (insert "(ns my.regex.ns)\n(defn foo [] :hi)\n")
+      (cl-letf (((symbol-function 'clojure-find-ns) (lambda () nil)))
+        (should (equal "my.regex.ns" (port-eval--current-ns session)))))))
+
 (ert-deftest port-eval-test-current-ns-falls-back-to-user-conn ()
-  "Use the user socket's tracked ns when `clojure-find-ns' returns nil."
+  "Final fallback is the user socket's tracked ns."
   (let* ((session (port-eval-tests--make-session)))
     (setf (port-client-current-ns (port-session-user-conn session)) "lib.foo")
-    (cl-letf (((symbol-function 'clojure-find-ns) (lambda () nil)))
-      (should (equal "lib.foo" (port-eval--current-ns session))))))
+    (with-temp-buffer
+      ;; No ns form in the buffer, no clojure-find-ns: fall through.
+      (cl-letf (((symbol-function 'clojure-find-ns) (lambda () nil)))
+        (should (equal "lib.foo" (port-eval--current-ns session)))))))
+
+(ert-deftest port-eval-test-current-buffer-ns-recognises-ns-form ()
+  (with-temp-buffer
+    (insert ";; preamble\n(ns app.core\n  (:require [clojure.string :as str]))\n")
+    (should (equal "app.core" (port-current-buffer-ns)))))
+
+(ert-deftest port-eval-test-current-buffer-ns-returns-nil-without-form ()
+  (with-temp-buffer
+    (insert "(defn standalone [])\n")
+    (should (null (port-current-buffer-ns)))))
 
 (ert-deftest port-tooling-test-user-eval-form-construction ()
   "Verify the wire form sent for a `port-tooling-user-eval' call."

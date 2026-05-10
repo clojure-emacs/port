@@ -104,8 +104,17 @@ across sessions.  Set to t to disable persistence entirely."
   :group 'port
   (setq-local comment-start ";")
   (setq-local indent-tabs-mode nil)
-  (when (fboundp 'clojure-mode-syntax-table)
-    (set-syntax-table (clojure-mode-syntax-table))))
+  (set-syntax-table (port-repl--clojure-syntax-table)))
+
+(defun port-repl--clojure-syntax-table ()
+  "Pick the best available Clojure-ish syntax table.
+Prefers `clojure-ts-mode' if loaded, then `clojure-mode'; falls
+back to `lisp-mode-syntax-table' so the REPL stays usable when
+neither is installed."
+  (cond
+   ((fboundp 'clojure-ts-mode-syntax-table) (clojure-ts-mode-syntax-table))
+   ((fboundp 'clojure-mode-syntax-table)    (clojure-mode-syntax-table))
+   (t                                       lisp-mode-syntax-table)))
 
 (defun port-repl-create-buffer (session)
   "Create and return a fresh REPL buffer for SESSION."
