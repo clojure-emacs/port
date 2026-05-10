@@ -83,10 +83,14 @@ member, where the surrounding API is synchronous."
       (funcall cb parsed))))
 
 (defun port-tooling--read-result (val-string)
-  "Parse VAL-STRING into an alist.
-VAL-STRING is the printed result map from `port.tooling/-eval'."
+  "Parse VAL-STRING into an alist, or nil if it isn't a map.
+VAL-STRING is the printed result map from `port.tooling/-eval'.
+Non-map values (e.g. the var ref `#'port.tooling/-eval' returned
+by the bootstrap form itself) parse to a stray symbol; we filter
+those out so callers can do simple non-nil checks."
   (condition-case _
-      (car (port-client--read val-string 0))
+      (let ((parsed (car (port-client--read val-string 0))))
+        (and (consp parsed) (consp (car parsed)) parsed))
     (error nil)))
 
 (defun port-tooling-decode-val (val)
