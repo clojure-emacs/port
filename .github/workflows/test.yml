@@ -43,3 +43,21 @@ jobs:
 
       - name: Run tests
         run: eldev -dtT test
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Emacs
+        uses: jcs090218/setup-emacs@v3
+        with:
+          version: '30.1'
+
+      - name: Install Eldev
+        run: curl -fsSL https://raw.github.com/doublep/eldev/master/webinstall/github-eldev | sh
+
+      - name: Check out the source code
+        uses: actions/checkout@v6
+
+      - name: Lint (checkdoc, package-lint, relint)
+        run: eldev -dtT lint --required
