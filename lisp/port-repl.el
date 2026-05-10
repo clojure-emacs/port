@@ -19,6 +19,7 @@
 (require 'cl-lib)
 (require 'seq)
 (require 'port-client)
+(require 'port-completion)
 (require 'port-session)
 (require 'port-stacktrace)
 
@@ -104,7 +105,8 @@ across sessions.  Set to t to disable persistence entirely."
   :group 'port
   (setq-local comment-start ";")
   (setq-local indent-tabs-mode nil)
-  (set-syntax-table (port-repl--clojure-syntax-table)))
+  (set-syntax-table (port-repl--clojure-syntax-table))
+  (port-completion-setup))
 
 (defun port-repl--clojure-syntax-table ()
   "Pick the best available Clojure-ish syntax table.

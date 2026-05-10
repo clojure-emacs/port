@@ -180,6 +180,15 @@ file is removed afterwards."
           (should (equal path (port-repl--resolve-history-file))))
       (delete-file path))))
 
+(ert-deftest port-repl-test-completion-at-point-installed ()
+  "`port-completion-at-point' is wired into the REPL buffer."
+  (let ((buf (port-repl-tests--fresh-buffer)))
+    (unwind-protect
+        (with-current-buffer buf
+          (should (memq #'port-completion-at-point
+                        completion-at-point-functions)))
+      (kill-buffer buf))))
+
 (ert-deftest port-repl-test-kill-buffer-shuts-down-session ()
   "Killing the REPL buffer should run `port-session-shutdown'."
   (let* ((called nil)
