@@ -7,7 +7,7 @@
 
 ;;; Code:
 
-(require 'ert)
+(require 'buttercup)
 (require 'cl-lib)
 (require 'port-client)
 (require 'port-session)
@@ -26,29 +26,30 @@
     (port-session--make :host "h" :port 1
                         :user-conn user :tool-conn tool)))
 
-(ert-deftest port-mode-test-set-ns-uses-user-socket-regardless-of-display ()
-  "`port-set-ns' must send `in-ns' on the user socket even when
-`port-eval-display' is set to a tool-socket mode -- the tool
-socket wraps each eval in `binding' for *ns*, which would
-immediately unwind the namespace switch."
+(describe "port-set-ns"
+
+  ;; The tool socket wraps each eval in `binding' for *ns*, which would
+  ;; immediately unwind the namespace switch.  So `in-ns' must always
+  ;; go on the user socket regardless of `port-eval-display'.
   (dolist (display '(minibuffer repl both))
-    (let* ((session (port-mode-tests--make-session))
-           (user-conn (port-session-user-conn session))
-           (tool-conn (port-session-tool-conn session))
-           (port-default-session session)
-           (port-eval-display display)
-           (buf (port-repl-create-buffer session))
-           sent-conn sent-form)
-      (unwind-protect
-          (progn
-            (cl-letf (((symbol-function 'port-client-send)
-                       (lambda (conn form)
-                         (setq sent-conn conn sent-form form))))
-              (port-set-ns "my.ns"))
-            (should (eq sent-conn user-conn))
-            (should-not (eq sent-conn tool-conn))
-            (should (equal "(in-ns 'my.ns)" sent-form)))
-        (kill-buffer buf)))))
+    (it (format "always sends in-ns on the user socket (display=%s)" display)
+      (let* ((session (port-mode-tests--make-session))
+             (user-conn (port-session-user-conn session))
+             (tool-conn (port-session-tool-conn session))
+             (port-default-session session)
+             (port-eval-display display)
+             (buf (port-repl-create-buffer session))
+             sent-conn sent-form)
+        (unwind-protect
+            (progn
+              (cl-letf (((symbol-function 'port-client-send)
+                         (lambda (conn form)
+                           (setq sent-conn conn sent-form form))))
+                (port-set-ns "my.ns"))
+              (expect sent-conn :to-be user-conn)
+              (expect sent-conn :not :to-be tool-conn)
+              (expect sent-form :to-equal "(in-ns 'my.ns)"))
+          (kill-buffer buf))))))
 
 (provide 'port-mode-tests)
 

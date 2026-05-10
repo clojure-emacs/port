@@ -7,74 +7,87 @@
 
 ;;; Code:
 
-(require 'ert)
+(require 'buttercup)
 (require 'cl-lib)
 (require 'port-jack-in)
 
 (defmacro port-jack-in-tests--with-fixture (markers &rest body)
-  "Create a temporary directory containing each filename in MARKERS, run BODY
-with `default-directory' bound to it, then clean up."
+  "Create a temporary directory with each filename in MARKERS as an
+empty file, run BODY with `default-directory' bound to it, then
+clean up."
   (declare (indent 1))
   `(let ((root (file-name-as-directory (make-temp-file "port-fixture" t))))
      (unwind-protect
          (let ((default-directory root))
-           (dolist (m ,markers) (with-temp-file (expand-file-name m root) (insert "")))
+           (dolist (m ,markers)
+             (with-temp-file (expand-file-name m root) (insert "")))
            ,@body)
        (delete-directory root t))))
 
-(ert-deftest port-jack-in-test-detect-tools-deps ()
-  (port-jack-in-tests--with-fixture '("deps.edn")
-    (let ((root (port-jack-in--detect-project-root)))
-      (should (file-equal-p root default-directory))
-      (should (eq 'tools-deps (port-jack-in--detect-project-type root))))))
+(describe "project detection"
 
-(ert-deftest port-jack-in-test-detect-leiningen ()
-  (port-jack-in-tests--with-fixture '("project.clj")
-    (let ((root (port-jack-in--detect-project-root)))
-      (should (eq 'leiningen (port-jack-in--detect-project-type root))))))
+  (it "spots tools.deps"
+    (port-jack-in-tests--with-fixture '("deps.edn")
+      (let ((root (port-jack-in--detect-project-root)))
+        (expect (file-equal-p root default-directory) :to-be-truthy)
+        (expect (port-jack-in--detect-project-type root)
+                :to-be 'tools-deps))))
 
-(ert-deftest port-jack-in-test-detect-babashka ()
-  (port-jack-in-tests--with-fixture '("bb.edn")
-    (let ((root (port-jack-in--detect-project-root)))
-      (should (eq 'babashka (port-jack-in--detect-project-type root))))))
+  (it "spots Leiningen"
+    (port-jack-in-tests--with-fixture '("project.clj")
+      (let ((root (port-jack-in--detect-project-root)))
+        (expect (port-jack-in--detect-project-type root)
+                :to-be 'leiningen))))
 
-(ert-deftest port-jack-in-test-detect-bare ()
-  (port-jack-in-tests--with-fixture '()
-    (let ((root (port-jack-in--detect-project-root)))
-      (should (eq 'bare (port-jack-in--detect-project-type root))))))
+  (it "spots babashka"
+    (port-jack-in-tests--with-fixture '("bb.edn")
+      (let ((root (port-jack-in--detect-project-root)))
+        (expect (port-jack-in--detect-project-type root)
+                :to-be 'babashka))))
 
-(ert-deftest port-jack-in-test-detect-precedence ()
-  ;; deps.edn wins over project.clj, project.clj over bb.edn.
-  (port-jack-in-tests--with-fixture '("deps.edn" "project.clj" "bb.edn")
-    (let ((root (port-jack-in--detect-project-root)))
-      (should (eq 'tools-deps (port-jack-in--detect-project-type root))))))
+  (it "falls back to `bare' when no marker is present"
+    (port-jack-in-tests--with-fixture '()
+      (let ((root (port-jack-in--detect-project-root)))
+        (expect (port-jack-in--detect-project-type root)
+                :to-be 'bare))))
 
-(ert-deftest port-jack-in-test-server-form-contains-port ()
-  (let ((form (port-jack-in--server-form 6789)))
-    (should (string-match-p ":port 6789" form))
-    (should (string-match-p "clojure.core.server/start-server" form))
-    (should (string-match-p "clojure.core.server/io-prepl" form))
-    (should (string-match-p "@(promise)" form))))
+  (it "prefers deps.edn over project.clj over bb.edn"
+    (port-jack-in-tests--with-fixture '("deps.edn" "project.clj" "bb.edn")
+      (let ((root (port-jack-in--detect-project-root)))
+        (expect (port-jack-in--detect-project-type root)
+                :to-be 'tools-deps)))))
 
-(ert-deftest port-jack-in-test-build-command-tools-deps ()
-  (let ((cmd (port-jack-in--build-command 'tools-deps 5555)))
-    (should (equal "clojure" (car cmd)))
-    (should (equal "-e" (nth 1 cmd)))
-    (should (string-match-p ":port 5555" (nth 2 cmd)))))
+(describe "port-jack-in--server-form"
+  (it "embeds the port and the prepl-server scaffolding"
+    (let ((form (port-jack-in--server-form 6789)))
+      (expect form :to-match ":port 6789")
+      (expect form :to-match "clojure.core.server/start-server")
+      (expect form :to-match "clojure.core.server/io-prepl")
+      (expect form :to-match "@(promise)"))))
 
-(ert-deftest port-jack-in-test-build-command-leiningen ()
-  (let ((cmd (port-jack-in--build-command 'leiningen 5555)))
-    (should (equal "lein" (car cmd)))
-    (should (member "trampoline" cmd))
-    (should (member "clojure.main" cmd))
-    (should (cl-some (lambda (s) (string-match-p ":port 5555" s)) cmd))))
+(describe "port-jack-in--build-command"
 
-(ert-deftest port-jack-in-test-build-command-bare-uses-clojure ()
-  (let ((cmd (port-jack-in--build-command 'bare 5555)))
-    (should (equal "clojure" (car cmd)))))
+  (it "tools.deps invokes `clojure -e'"
+    (let ((cmd (port-jack-in--build-command 'tools-deps 5555)))
+      (expect (car cmd)   :to-equal "clojure")
+      (expect (nth 1 cmd) :to-equal "-e")
+      (expect (nth 2 cmd) :to-match ":port 5555")))
 
-(ert-deftest port-jack-in-test-build-command-babashka-errors ()
-  (should-error (port-jack-in--build-command 'babashka 5555) :type 'user-error))
+  (it "Leiningen routes through trampoline + clojure.main"
+    (let ((cmd (port-jack-in--build-command 'leiningen 5555)))
+      (expect (car cmd) :to-equal "lein")
+      (expect (member "trampoline" cmd) :to-be-truthy)
+      (expect (member "clojure.main" cmd) :to-be-truthy)
+      (expect (cl-some (lambda (s) (string-match-p ":port 5555" s)) cmd)
+              :to-be-truthy)))
+
+  (it "bare projects also use the clojure CLI"
+    (let ((cmd (port-jack-in--build-command 'bare 5555)))
+      (expect (car cmd) :to-equal "clojure")))
+
+  (it "babashka isn't supported yet -- raise a user-error"
+    (expect (port-jack-in--build-command 'babashka 5555)
+            :to-throw 'user-error)))
 
 (provide 'port-jack-in-tests)
 

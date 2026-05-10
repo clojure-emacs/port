@@ -21,9 +21,11 @@ eldev compile    # byte-compile every file
 eldev lint       # run elisp-lint and relint
 ```
 
-The test suite is fast (a few hundred milliseconds) and doesn't
-require a live Clojure runtime — most tests synthesise prepl
-messages and exercise the parser/dispatcher directly.
+Tests use [Buttercup](https://github.com/jorgenschaefer/emacs-buttercup)
+(`describe` / `it` / `expect`).  Eldev pulls it in automatically when
+you first run `eldev test`.  The suite is fast (a few hundred
+milliseconds) and doesn't require a live Clojure runtime — most tests
+synthesise prepl messages and exercise the parser/dispatcher directly.
 
 ## Code style
 

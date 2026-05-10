@@ -7,45 +7,49 @@
 
 ;;; Code:
 
-(require 'ert)
+(require 'buttercup)
 (require 'port-tooling)
 (require 'port-eldoc)
 
-(ert-deftest port-eldoc-test-decode-string ()
-  ;; A printed Clojure string round-trips to its contents.
-  (should (equal "hello" (port-tooling-decode-val "\"hello\"")))
-  ;; Embedded escapes get unescaped.
-  (should (equal "a\nb" (port-tooling-decode-val "\"a\\nb\""))))
+(describe "port-tooling-decode-val"
 
-(ert-deftest port-eldoc-test-decode-nil ()
-  (should (eq nil (port-tooling-decode-val "nil"))))
+  (it "unwraps a printed Clojure string"
+    (expect (port-tooling-decode-val "\"hello\"") :to-equal "hello"))
 
-(ert-deftest port-eldoc-test-decode-number ()
-  (should (= 42 (port-tooling-decode-val "42"))))
+  (it "unescapes embedded sequences"
+    (expect (port-tooling-decode-val "\"a\\nb\"") :to-equal "a\nb"))
 
-(ert-deftest port-eldoc-test-decode-falls-through ()
-  ;; Non-string values are returned unchanged.
-  (should (eq nil (port-tooling-decode-val nil)))
-  (should (= 7 (port-tooling-decode-val 7))))
+  (it "decodes nil"
+    (expect (port-tooling-decode-val "nil") :to-be nil))
 
-(ert-deftest port-eldoc-test-target-inside-call ()
-  (with-temp-buffer
-    (set-syntax-table emacs-lisp-mode-syntax-table)
-    (insert "(map inc [1 2 3])")
-    (goto-char 8)  ;; inside the form, just after `inc'
-    (should (equal "map" (port-eldoc--target)))))
+  (it "decodes a number"
+    (expect (port-tooling-decode-val "42") :to-equal 42))
 
-(ert-deftest port-eldoc-test-target-outside-list ()
-  (with-temp-buffer
-    (set-syntax-table emacs-lisp-mode-syntax-table)
-    (insert "foo")
-    (goto-char 2)
-    (should (null (port-eldoc--target)))))
+  (it "leaves non-string values alone"
+    (expect (port-tooling-decode-val nil) :to-be nil)
+    (expect (port-tooling-decode-val 7) :to-equal 7)))
 
-(ert-deftest port-eldoc-test-query-substitutes ()
-  (let ((q (port-eldoc--query "foo" "my.ns")))
-    (should (string-match-p "find-ns (quote my.ns)" q))
-    (should (string-match-p "ns-resolve ns (quote foo)" q))))
+(describe "port-eldoc--target"
+
+  (it "returns the function symbol when point is inside a call"
+    (with-temp-buffer
+      (set-syntax-table emacs-lisp-mode-syntax-table)
+      (insert "(map inc [1 2 3])")
+      (goto-char 8)  ;; inside the form, just after `inc'
+      (expect (port-eldoc--target) :to-equal "map")))
+
+  (it "returns nil when point isn't inside a list"
+    (with-temp-buffer
+      (set-syntax-table emacs-lisp-mode-syntax-table)
+      (insert "foo")
+      (goto-char 2)
+      (expect (port-eldoc--target) :to-be nil))))
+
+(describe "port-eldoc--query"
+  (it "substitutes the namespace and symbol"
+    (let ((q (port-eldoc--query "foo" "my.ns")))
+      (expect q :to-match "find-ns (quote my.ns)")
+      (expect q :to-match "ns-resolve ns (quote foo)"))))
 
 (provide 'port-eldoc-tests)
 

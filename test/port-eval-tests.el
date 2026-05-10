@@ -9,7 +9,7 @@
 
 ;;; Code:
 
-(require 'ert)
+(require 'buttercup)
 (require 'cl-lib)
 (require 'port-client)
 (require 'port-session)
@@ -34,172 +34,175 @@
     (port-session--make :host "h" :port 1
                         :user-conn conn :tool-conn conn)))
 
-(ert-deftest port-eval-test-display-minibuffer-shows-value ()
-  (let* ((port-eval-display 'minibuffer)
-         (session (port-eval-tests--make-session))
-         (port-default-session session)
-         (msg (port-eval-tests--with-message
-               (lambda ()
-                 (port-eval--display-result
-                  '((:tag . :ok) (:val . "3")
-                    (:out . "") (:err . "") (:ns . "user")))))))
-    (should (equal "=> 3" msg))))
+(describe "port-eval--display-result"
 
-(ert-deftest port-eval-test-display-error-uses-ex-message ()
-  (let* ((port-eval-display 'minibuffer)
-         (session (port-eval-tests--make-session))
-         (port-default-session session)
-         (msg (port-eval-tests--with-message
-               (lambda ()
-                 (port-eval--display-result
-                  '((:tag . :err)
-                    (:ex-message . "Divide by zero")
-                    (:ex . "{:cause \"Divide by zero\" ...}")
-                    (:out . "") (:err . "")))))))
-    (should (equal "Divide by zero" msg))))
+  (it "shows the value in the minibuffer (default mode)"
+    (let* ((port-eval-display 'minibuffer)
+           (session (port-eval-tests--make-session))
+           (port-default-session session)
+           (msg (port-eval-tests--with-message
+                 (lambda ()
+                   (port-eval--display-result
+                    '((:tag . :ok) (:val . "3")
+                      (:out . "") (:err . "") (:ns . "user")))))))
+      (expect msg :to-equal "=> 3")))
 
-(ert-deftest port-eval-test-display-error-falls-back-to-ex ()
-  "When :ex-message is missing, fall back to the printed Throwable->map."
-  (let* ((port-eval-display 'minibuffer)
-         (session (port-eval-tests--make-session))
-         (port-default-session session)
-         (msg (port-eval-tests--with-message
-               (lambda ()
-                 (port-eval--display-result
-                  '((:tag . :err)
-                    (:ex . "boom") (:out . "") (:err . "")))))))
-    (should (equal "boom" msg))))
+  (it "uses :ex-message for the minibuffer error blurb"
+    (let* ((port-eval-display 'minibuffer)
+           (session (port-eval-tests--make-session))
+           (port-default-session session)
+           (msg (port-eval-tests--with-message
+                 (lambda ()
+                   (port-eval--display-result
+                    '((:tag . :err)
+                      (:ex-message . "Divide by zero")
+                      (:ex . "{:cause \"Divide by zero\" ...}")
+                      (:out . "") (:err . "")))))))
+      (expect msg :to-equal "Divide by zero")))
 
-(ert-deftest port-eval-test-display-both-echoes-result-to-repl ()
-  (let* ((session (port-eval-tests--make-session))
-         (port-default-session session)
-         (port-eval-display 'both)
-         (buf (port-repl-create-buffer session)))
-    (unwind-protect
-        (progn
-          (port-eval-tests--with-message
-           (lambda ()
-             (port-eval--display-result
-              '((:tag . :ok) (:val . "42")
-                (:out . "") (:err . "") (:ns . "user")))))
-          (with-current-buffer buf
-            (should (string-match-p "42\nuser=> "
-                                    (buffer-substring-no-properties
-                                     (point-min) (point-max))))))
-      (kill-buffer buf))))
+  (it "falls back to :ex when :ex-message is missing"
+    (let* ((port-eval-display 'minibuffer)
+           (session (port-eval-tests--make-session))
+           (port-default-session session)
+           (msg (port-eval-tests--with-message
+                 (lambda ()
+                   (port-eval--display-result
+                    '((:tag . :err)
+                      (:ex . "boom") (:out . "") (:err . "")))))))
+      (expect msg :to-equal "boom")))
 
-(ert-deftest port-eval-test-display-out-always-emitted-to-repl ()
-  "Captured stdout should land in the REPL even in `minibuffer' mode."
-  (let* ((session (port-eval-tests--make-session))
-         (port-default-session session)
-         (port-eval-display 'minibuffer)
-         (buf (port-repl-create-buffer session)))
-    (unwind-protect
-        (progn
-          (port-eval-tests--with-message
-           (lambda ()
-             (port-eval--display-result
-              '((:tag . :ok) (:val . "nil")
-                (:out . "side-effect\n") (:err . "")
-                (:ns . "user")))))
-          (with-current-buffer buf
-            (should (string-match-p "side-effect\n"
-                                    (buffer-substring-no-properties
-                                     (point-min) (point-max))))))
-      (kill-buffer buf))))
+  (it "echoes the value into the REPL when display is `both'"
+    (let* ((session (port-eval-tests--make-session))
+           (port-default-session session)
+           (port-eval-display 'both)
+           (buf (port-repl-create-buffer session)))
+      (unwind-protect
+          (progn
+            (port-eval-tests--with-message
+             (lambda ()
+               (port-eval--display-result
+                '((:tag . :ok) (:val . "42")
+                  (:out . "") (:err . "") (:ns . "user")))))
+            (with-current-buffer buf
+              (expect (buffer-substring-no-properties (point-min) (point-max))
+                      :to-match "42\nuser=> ")))
+        (kill-buffer buf))))
 
-(ert-deftest port-eval-test-current-ns-prefers-buffer-ns ()
-  "Honor `clojure-find-ns' when it returns a value."
-  (let ((session (port-eval-tests--make-session)))
-    (cl-letf (((symbol-function 'clojure-find-ns) (lambda () "my.ns")))
-      (should (equal "my.ns" (port-eval--current-ns session))))))
+  (it "always emits :out into the REPL, even in minibuffer mode"
+    (let* ((session (port-eval-tests--make-session))
+           (port-default-session session)
+           (port-eval-display 'minibuffer)
+           (buf (port-repl-create-buffer session)))
+      (unwind-protect
+          (progn
+            (port-eval-tests--with-message
+             (lambda ()
+               (port-eval--display-result
+                '((:tag . :ok) (:val . "nil")
+                  (:out . "side-effect\n") (:err . "")
+                  (:ns . "user")))))
+            (with-current-buffer buf
+              (expect (buffer-substring-no-properties (point-min) (point-max))
+                      :to-match "side-effect\n")))
+        (kill-buffer buf))))
 
-(ert-deftest port-eval-test-current-ns-falls-back-to-regex ()
-  "Without `clojure-find-ns' the regex-based extractor takes over."
-  (let* ((session (port-eval-tests--make-session)))
+  (it "truncates a multi-line value to its first line in the minibuffer"
+    (let* ((port-eval-display 'minibuffer)
+           (session (port-eval-tests--make-session))
+           (port-default-session session)
+           (msg (port-eval-tests--with-message
+                 (lambda ()
+                   (port-eval--display-result
+                    '((:tag . :ok) (:val . "{:a 1\n :b 2}")
+                      (:out . "") (:err . "") (:ns . "user")))))))
+      (expect (string-prefix-p "=> {:a 1" msg) :to-be-truthy)
+      (expect (string-suffix-p "…" msg) :to-be-truthy)
+      (expect msg :not :to-match "\n"))))
+
+(describe "port-eval--current-ns"
+
+  (it "honours `clojure-find-ns' when bound"
+    (let ((session (port-eval-tests--make-session)))
+      (cl-letf (((symbol-function 'clojure-find-ns) (lambda () "my.ns")))
+        (expect (port-eval--current-ns session) :to-equal "my.ns"))))
+
+  (it "falls back to the regex-based extractor"
+    (let ((session (port-eval-tests--make-session)))
+      (with-temp-buffer
+        (insert "(ns my.regex.ns)\n(defn foo [] :hi)\n")
+        (cl-letf (((symbol-function 'clojure-find-ns) (lambda () nil)))
+          (expect (port-eval--current-ns session)
+                  :to-equal "my.regex.ns")))))
+
+  (it "falls back to the user socket's tracked ns when the buffer has none"
+    (let ((session (port-eval-tests--make-session)))
+      (setf (port-client-current-ns (port-session-user-conn session))
+            "lib.foo")
+      (with-temp-buffer
+        (cl-letf (((symbol-function 'clojure-find-ns) (lambda () nil)))
+          (expect (port-eval--current-ns session)
+                  :to-equal "lib.foo"))))))
+
+(describe "port-current-buffer-ns"
+
+  (it "recognises an `ns' form near the top of the buffer"
     (with-temp-buffer
-      (insert "(ns my.regex.ns)\n(defn foo [] :hi)\n")
-      (cl-letf (((symbol-function 'clojure-find-ns) (lambda () nil)))
-        (should (equal "my.regex.ns" (port-eval--current-ns session)))))))
+      (insert ";; preamble\n(ns app.core\n  (:require [clojure.string :as str]))\n")
+      (expect (port-current-buffer-ns) :to-equal "app.core")))
 
-(ert-deftest port-eval-test-current-ns-falls-back-to-user-conn ()
-  "Final fallback is the user socket's tracked ns."
-  (let* ((session (port-eval-tests--make-session)))
-    (setf (port-client-current-ns (port-session-user-conn session)) "lib.foo")
+  (it "returns nil when no ns form is present"
     (with-temp-buffer
-      ;; No ns form in the buffer, no clojure-find-ns: fall through.
-      (cl-letf (((symbol-function 'clojure-find-ns) (lambda () nil)))
-        (should (equal "lib.foo" (port-eval--current-ns session)))))))
+      (insert "(defn standalone [])\n")
+      (expect (port-current-buffer-ns) :to-be nil))))
 
-(ert-deftest port-eval-test-current-buffer-ns-recognises-ns-form ()
-  (with-temp-buffer
-    (insert ";; preamble\n(ns app.core\n  (:require [clojure.string :as str]))\n")
-    (should (equal "app.core" (port-current-buffer-ns)))))
+(describe "port-tooling-user-eval"
 
-(ert-deftest port-eval-test-current-buffer-ns-returns-nil-without-form ()
-  (with-temp-buffer
-    (insert "(defn standalone [])\n")
-    (should (null (port-current-buffer-ns)))))
+  (it "constructs the wire form with the namespace and code"
+    (let* ((session (port-eval-tests--make-session))
+           (port-print-length 50)
+           (port-print-level 5)
+           sent)
+      (cl-letf (((symbol-function 'port-client-send)
+                 (lambda (_conn s) (setq sent s))))
+        (port-tooling-user-eval session "my.ns" "(+ 1 2)" #'ignore))
+      (expect sent :to-match
+              "(port\\.tooling/-user-eval [0-9]+ (quote my\\.ns)")
+      ;; The code is sent as a properly quoted Clojure string literal.
+      (expect sent :to-match (regexp-quote "\"(+ 1 2)\""))
+      ;; The print-length and print-level integers follow.
+      (expect sent :to-match "\" 50 5)$")))
 
-(ert-deftest port-tooling-test-user-eval-form-construction ()
-  "Verify the wire form sent for a `port-tooling-user-eval' call."
-  (let* ((session (port-eval-tests--make-session))
-         (port-print-length 50)
-         (port-print-level 5)
-         sent)
-    (cl-letf (((symbol-function 'port-client-send)
-               (lambda (_conn s) (setq sent s))))
-      (port-tooling-user-eval session "my.ns" "(+ 1 2)" #'ignore))
-    (should (string-match-p "(port\\.tooling/-user-eval [0-9]+ (quote my\\.ns)"
-                            sent))
-    ;; The code is sent as a properly quoted Clojure string literal.
-    (should (string-match-p (regexp-quote "\"(+ 1 2)\"") sent))
-    ;; The print-length and print-level integers follow.
-    (should (string-match-p "\" 50 5)$" sent))))
+  (it "passes nil through when `port-print-length' / `port-print-level' are nil"
+    (let* ((session (port-eval-tests--make-session))
+           (port-print-length nil)
+           (port-print-level nil)
+           sent)
+      (cl-letf (((symbol-function 'port-client-send)
+                 (lambda (_conn s) (setq sent s))))
+        (port-tooling-user-eval session "user" "x" #'ignore))
+      (expect sent :to-match "\" nil nil)$")))
 
-(ert-deftest port-eval-test-summary-line-passes-single-line-through ()
-  (should (equal "42" (port-eval--summary-line "42")))
-  (should (equal "{:a 1, :b 2}" (port-eval--summary-line "{:a 1, :b 2}")))
-  (should (equal nil (port-eval--summary-line nil))))
+  (it "survives the Elisp -> Clojure round trip on quoted strings"
+    (let* ((session (port-eval-tests--make-session))
+           sent)
+      (cl-letf (((symbol-function 'port-client-send)
+                 (lambda (_conn s) (setq sent s))))
+        (port-tooling-user-eval session "user" "(println \"hi\")" #'ignore))
+      (expect sent :to-match
+              (regexp-quote "\"(println \\\"hi\\\")\"")))))
 
-(ert-deftest port-eval-test-summary-line-truncates-multiline ()
-  (let ((s (port-eval--summary-line "{:a 1\n :b 2\n :c 3}")))
-    (should (string-prefix-p "{:a 1" s))
-    (should (string-suffix-p "…" s))
-    (should-not (string-match-p "\n" s))))
+(describe "port-eval--summary-line"
 
-(ert-deftest port-eval-test-display-minibuffer-truncates-multiline-value ()
-  (let* ((port-eval-display 'minibuffer)
-         (session (port-eval-tests--make-session))
-         (port-default-session session)
-         (msg (port-eval-tests--with-message
-               (lambda ()
-                 (port-eval--display-result
-                  '((:tag . :ok) (:val . "{:a 1\n :b 2}")
-                    (:out . "") (:err . "") (:ns . "user")))))))
-    (should (string-prefix-p "=> {:a 1" msg))
-    (should (string-suffix-p "…" msg))
-    (should-not (string-match-p "\n" msg))))
+  (it "passes single-line values through unchanged"
+    (expect (port-eval--summary-line "42") :to-equal "42")
+    (expect (port-eval--summary-line "{:a 1, :b 2}") :to-equal "{:a 1, :b 2}")
+    (expect (port-eval--summary-line nil) :to-be nil))
 
-(ert-deftest port-tooling-test-user-eval-passes-nil-print-caps ()
-  "When `port-print-length' / `port-print-level' are nil, send `nil'."
-  (let* ((session (port-eval-tests--make-session))
-         (port-print-length nil)
-         (port-print-level nil)
-         sent)
-    (cl-letf (((symbol-function 'port-client-send)
-               (lambda (_conn s) (setq sent s))))
-      (port-tooling-user-eval session "user" "x" #'ignore))
-    (should (string-match-p "\" nil nil)$" sent))))
-
-(ert-deftest port-tooling-test-user-eval-escapes-quotes ()
-  "Strings containing quotes survive the Elisp -> Clojure round trip."
-  (let* ((session (port-eval-tests--make-session))
-         sent)
-    (cl-letf (((symbol-function 'port-client-send)
-               (lambda (_conn s) (setq sent s))))
-      (port-tooling-user-eval session "user" "(println \"hi\")" #'ignore))
-    (should (string-match-p (regexp-quote "\"(println \\\"hi\\\")\"") sent))))
+  (it "truncates multi-line values to the first line plus an ellipsis"
+    (let ((s (port-eval--summary-line "{:a 1\n :b 2\n :c 3}")))
+      (expect (string-prefix-p "{:a 1" s) :to-be-truthy)
+      (expect (string-suffix-p "…" s) :to-be-truthy)
+      (expect s :not :to-match "\n"))))
 
 (provide 'port-eval-tests)
 

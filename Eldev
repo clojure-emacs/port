@@ -12,6 +12,9 @@
 
 (eldev-add-loading-roots 'test "test/")
 
+(setf eldev-test-framework 'buttercup)
+(eldev-add-extra-dependencies 'test 'buttercup)
+
 (setq byte-compile-docstring-max-column 100)
 (setq checkdoc-permit-comma-termination-flag t)
 

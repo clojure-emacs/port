@@ -7,60 +7,66 @@
 
 ;;; Code:
 
-(require 'ert)
+(require 'buttercup)
 (require 'port-tooling)
 (require 'port-xref)
 
-(ert-deftest port-xref-test-query-substitutes ()
-  (let ((q (port-xref--query "foo" "my.ns")))
-    (should (string-match-p "find-ns (quote my.ns)" q))
-    (should (string-match-p "ns-resolve ns (quote foo)" q))
-    (should (string-match-p ":file file" q))
-    (should (string-match-p ":line (:line m)" q))
-    (should (string-match-p "clojure.java.io/resource" q))
-    (should (string-match-p ":url (some-> url str)" q))
-    (should (string-match-p ":contents " q))))
+(describe "port-xref--query"
+  (it "substitutes namespace, symbol, and resource lookup"
+    (let ((q (port-xref--query "foo" "my.ns")))
+      (expect q :to-match "find-ns (quote my.ns)")
+      (expect q :to-match "ns-resolve ns (quote foo)")
+      (expect q :to-match ":file file")
+      (expect q :to-match ":line (:line m)")
+      (expect q :to-match "clojure.java.io/resource")
+      (expect q :to-match ":url (some-> url str)")
+      (expect q :to-match ":contents "))))
 
-(ert-deftest port-xref-test-decode-result-map ()
-  (let* ((printed (concat "{:name \"clojure.core/map\","
-                          " :file \"clojure/core.clj\","
-                          " :line 2727,"
-                          " :column 1}"))
-         (m (port-tooling-decode-val printed)))
-    (should (consp m))
-    (should (equal "clojure.core/map" (alist-get :name m)))
-    (should (equal "clojure/core.clj" (alist-get :file m)))
-    (should (= 2727 (alist-get :line m)))))
+(describe "port-tooling-decode-val for an xref result map"
 
-(ert-deftest port-xref-test-decode-nil-result ()
-  ;; When the symbol doesn't resolve, the Clojure form returns nil and
-  ;; the printed val is "nil".  We expect Elisp nil after decoding.
-  (should (eq nil (port-tooling-decode-val "nil"))))
+  (it "parses :name, :file, :line out of the printed map"
+    (let* ((printed (concat "{:name \"clojure.core/map\","
+                            " :file \"clojure/core.clj\","
+                            " :line 2727,"
+                            " :column 1}"))
+           (m (port-tooling-decode-val printed)))
+      (expect (consp m) :to-be-truthy)
+      (expect (alist-get :name m) :to-equal "clojure.core/map")
+      (expect (alist-get :file m) :to-equal "clojure/core.clj")
+      (expect (alist-get :line m) :to-equal 2727)))
 
-(ert-deftest port-xref-test-jar-buffer-name ()
-  (should (equal
-           "*port-jar: clojure-1.11.1.jar!/clojure/core.clj*"
-           (port-xref--jar-buffer-name
-            "jar:file:/home/me/.m2/.../clojure-1.11.1.jar!/clojure/core.clj")))
-  ;; Falls back gracefully when the URL doesn't match the expected shape.
-  (should (string-prefix-p "*port-jar: "
-                           (port-xref--jar-buffer-name "weird-url"))))
+  (it "returns Elisp nil when the symbol doesn't resolve"
+    ;; The Clojure form returns nil and the printed val is "nil".
+    (expect (port-tooling-decode-val "nil") :to-be nil)))
 
-(ert-deftest port-xref-test-visit-jar-creates-buffer ()
-  (let* ((url "jar:file:/tmp/foo.jar!/inner/x.clj")
-         (contents "(ns inner.x)\n(defn hello [] :hi)\n")
-         (existing (get-buffer (port-xref--jar-buffer-name url))))
-    (when existing (kill-buffer existing))
-    (let ((buf-name (port-xref--jar-buffer-name url)))
+(describe "port-xref--jar-buffer-name"
+
+  (it "extracts the jar name and inner path from a jar: URL"
+    (expect (port-xref--jar-buffer-name
+             "jar:file:/home/me/.m2/.../clojure-1.11.1.jar!/clojure/core.clj")
+            :to-equal
+            "*port-jar: clojure-1.11.1.jar!/clojure/core.clj*"))
+
+  (it "falls back gracefully on an unrecognised URL shape"
+    (expect (port-xref--jar-buffer-name "weird-url")
+            :to-match "\\`\\*port-jar: ")))
+
+(describe "port-xref--visit-jar"
+  (it "creates a read-only buffer with the jar contents and jumps to LINE"
+    (let* ((url "jar:file:/tmp/foo.jar!/inner/x.clj")
+           (contents "(ns inner.x)\n(defn hello [] :hi)\n")
+           (buf-name (port-xref--jar-buffer-name url))
+           (existing (get-buffer buf-name)))
+      (when existing (kill-buffer existing))
       (unwind-protect
           (save-window-excursion
             (port-xref--visit-jar url contents 2)
             (let ((buf (get-buffer buf-name)))
-              (should buf)
+              (expect buf :to-be-truthy)
               (with-current-buffer buf
-                (should buffer-read-only)
-                (should (equal url port-xref--jar-url))
-                (should (= 2 (line-number-at-pos))))))
+                (expect buffer-read-only :to-be-truthy)
+                (expect port-xref--jar-url :to-equal url)
+                (expect (line-number-at-pos) :to-equal 2))))
         (when (get-buffer buf-name)
           (kill-buffer buf-name))))))
 

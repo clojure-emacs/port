@@ -7,24 +7,28 @@
 
 ;;; Code:
 
-(require 'ert)
+(require 'buttercup)
 (require 'port-completion)
 (require 'port-tooling)
 
-(ert-deftest port-completion-test-query-substitutes-ns-and-prefix ()
-  (let ((q (port-completion--query "ma" "my.ns")))
-    (should (string-match-p "find-ns (quote my.ns)" q))
-    (should (string-match-p "prefix \"ma\"" q))))
+(describe "port-completion--query"
 
-(ert-deftest port-completion-test-query-escapes-prefix ()
-  (let ((q (port-completion--query "a\"b" "user")))
-    (should (string-match-p "prefix \"a\\\\\"b\"" q))))
+  (it "substitutes namespace and prefix into the form"
+    (let ((q (port-completion--query "ma" "my.ns")))
+      (expect q :to-match "find-ns (quote my.ns)")
+      (expect q :to-match "prefix \"ma\"")))
 
-(ert-deftest port-completion-test-decode-newline-list ()
-  ;; The Clojure side returns a newline-joined string, which our decoder
-  ;; unwraps from the printed-string form.  The CAPF then splits it.
-  (should (equal "map\nmapcat\nmapv"
-                 (port-tooling-decode-val "\"map\\nmapcat\\nmapv\""))))
+  (it "escapes quotes inside the prefix"
+    (let ((q (port-completion--query "a\"b" "user")))
+      (expect q :to-match "prefix \"a\\\\\"b\""))))
+
+(describe "port-tooling-decode-val with a newline-joined list"
+  (it "returns the unwrapped multi-line string"
+    ;; The Clojure side returns a newline-joined string, which our
+    ;; decoder unwraps from the printed-string form.  The CAPF then
+    ;; splits it.
+    (expect (port-tooling-decode-val "\"map\\nmapcat\\nmapv\"")
+            :to-equal "map\nmapcat\nmapv")))
 
 (provide 'port-completion-tests)
 

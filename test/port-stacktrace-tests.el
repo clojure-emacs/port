@@ -6,7 +6,7 @@
 
 ;;; Code:
 
-(require 'ert)
+(require 'buttercup)
 (require 'port-client)
 (require 'port-stacktrace)
 
@@ -22,73 +22,79 @@
           " :data {:foo 1}}")
   "A sample printed Throwable->map for tests.")
 
-(ert-deftest port-stacktrace-test-parse-returns-alist ()
-  (let ((m (port-stacktrace-parse port-stacktrace-tests--sample)))
-    (should m)
-    (should (equal "boom" (alist-get :cause m)))
-    (should (= 3 (length (alist-get :trace m))))))
+(describe "port-stacktrace-parse"
 
-(ert-deftest port-stacktrace-test-parse-rejects-non-map ()
-  (should (null (port-stacktrace-parse "42")))
-  (should (null (port-stacktrace-parse "[1 2 3]")))
-  (should (null (port-stacktrace-parse "not edn at all"))))
+  (it "returns the parsed alist for a real Throwable->map shape"
+    (let ((m (port-stacktrace-parse port-stacktrace-tests--sample)))
+      (expect m :to-be-truthy)
+      (expect (alist-get :cause m) :to-equal "boom")
+      (expect (length (alist-get :trace m)) :to-equal 3)))
 
-(ert-deftest port-stacktrace-test-display-renders-cause ()
-  (let* ((port-stacktrace-auto-open nil)
-         (m (port-stacktrace-parse port-stacktrace-tests--sample))
-         (buf (port-stacktrace-display m nil)))
-    (unwind-protect
-        (with-current-buffer buf
-          (let ((text (buffer-substring-no-properties (point-min) (point-max))))
-            (should (string-match-p "ExceptionInfo" text))
-            (should (string-match-p "boom" text))
-            (should (string-match-p ":foo 1" text))
-            (should (string-match-p "Trace:" text))
-            (should (string-match-p "app.clj:42" text))))
-      (kill-buffer buf))))
+  (it "returns nil for non-map inputs"
+    (expect (port-stacktrace-parse "42") :to-be nil)
+    (expect (port-stacktrace-parse "[1 2 3]") :to-be nil)
+    (expect (port-stacktrace-parse "not edn at all") :to-be nil)))
 
-(ert-deftest port-stacktrace-test-display-filters-internals ()
-  (let* ((port-stacktrace-auto-open nil)
-         (port-stacktrace-hide-clojure-internals t)
-         (m (port-stacktrace-parse port-stacktrace-tests--sample))
-         (buf (port-stacktrace-display m nil)))
-    (unwind-protect
-        (with-current-buffer buf
-          (let ((text (buffer-substring-no-properties (point-min) (point-max))))
-            ;; clojure.lang.Compiler frame should be filtered out.
-            (should-not (string-match-p "Compiler.java" text))
-            (should (string-match-p "frames hidden" text))))
-      (kill-buffer buf))))
+(describe "port-stacktrace-display"
 
-(ert-deftest port-stacktrace-test-display-keeps-internals-when-disabled ()
-  (let* ((port-stacktrace-auto-open nil)
-         (port-stacktrace-hide-clojure-internals nil)
-         (m (port-stacktrace-parse port-stacktrace-tests--sample))
-         (buf (port-stacktrace-display m nil)))
-    (unwind-protect
-        (with-current-buffer buf
-          (let ((text (buffer-substring-no-properties (point-min) (point-max))))
-            (should (string-match-p "Compiler.java" text))))
-      (kill-buffer buf))))
+  (it "renders the cause line, ex-data, and trace section"
+    (let* ((port-stacktrace-auto-open nil)
+           (m (port-stacktrace-parse port-stacktrace-tests--sample))
+           (buf (port-stacktrace-display m nil)))
+      (unwind-protect
+          (with-current-buffer buf
+            (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+              (expect text :to-match "ExceptionInfo")
+              (expect text :to-match "boom")
+              (expect text :to-match ":foo 1")
+              (expect text :to-match "Trace:")
+              (expect text :to-match "app.clj:42")))
+        (kill-buffer buf))))
 
-(ert-deftest port-stacktrace-test-frame-property-set ()
-  (let* ((port-stacktrace-auto-open nil)
-         (port-stacktrace-hide-clojure-internals nil)
-         (m (port-stacktrace-parse port-stacktrace-tests--sample))
-         (buf (port-stacktrace-display m nil)))
-    (unwind-protect
-        (with-current-buffer buf
-          (goto-char (point-min))
-          (re-search-forward "app.clj")
-          (should (get-text-property (point) 'port-stacktrace-frame)))
-      (kill-buffer buf))))
+  (it "filters Clojure/Java internals when the toggle is on"
+    (let* ((port-stacktrace-auto-open nil)
+           (port-stacktrace-hide-clojure-internals t)
+           (m (port-stacktrace-parse port-stacktrace-tests--sample))
+           (buf (port-stacktrace-display m nil)))
+      (unwind-protect
+          (with-current-buffer buf
+            (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+              ;; clojure.lang.Compiler frame should be hidden.
+              (expect text :not :to-match "Compiler.java")
+              (expect text :to-match "frames hidden")))
+        (kill-buffer buf))))
 
-(ert-deftest port-stacktrace-test-pop-from-result-noop-on-bad-ex ()
-  ;; No `:ex' field at all -> nothing to render, must not error.
-  (should (null (port-stacktrace-pop-from-result '((:tag . :err)))))
-  ;; Unparseable `:ex' string -> still no-op.
-  (should (null (port-stacktrace-pop-from-result
-                 '((:tag . :err) (:ex . "garbage"))))))
+  (it "keeps every frame when the toggle is off"
+    (let* ((port-stacktrace-auto-open nil)
+           (port-stacktrace-hide-clojure-internals nil)
+           (m (port-stacktrace-parse port-stacktrace-tests--sample))
+           (buf (port-stacktrace-display m nil)))
+      (unwind-protect
+          (with-current-buffer buf
+            (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+              (expect text :to-match "Compiler.java")))
+        (kill-buffer buf))))
+
+  (it "tags rendered frames with `port-stacktrace-frame'"
+    (let* ((port-stacktrace-auto-open nil)
+           (port-stacktrace-hide-clojure-internals nil)
+           (m (port-stacktrace-parse port-stacktrace-tests--sample))
+           (buf (port-stacktrace-display m nil)))
+      (unwind-protect
+          (with-current-buffer buf
+            (goto-char (point-min))
+            (re-search-forward "app.clj")
+            (expect (get-text-property (point) 'port-stacktrace-frame)
+                    :to-be-truthy))
+        (kill-buffer buf)))))
+
+(describe "port-stacktrace-pop-from-result"
+  (it "is a no-op on results without a parseable :ex"
+    (expect (port-stacktrace-pop-from-result '((:tag . :err)))
+            :to-be nil)
+    (expect (port-stacktrace-pop-from-result
+             '((:tag . :err) (:ex . "garbage")))
+            :to-be nil)))
 
 (provide 'port-stacktrace-tests)
 
