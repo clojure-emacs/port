@@ -32,10 +32,9 @@ Returns nil if point is not inside a list, or there is no symbol there."
 
 (defun port-eldoc--user-ns ()
   "Return the current namespace of the active session's user socket."
-  (or (and port-default-session
-           (port-client-current-ns
-            (port-session-user-conn port-default-session)))
-      "user"))
+  (if port-default-session
+      (port-session-current-ns port-default-session)
+    "user"))
 
 (defun port-eldoc--query (sym ns)
   "Build the Clojure form that resolves SYM in NS and return its arglists string."

@@ -95,8 +95,7 @@ own regex-based fallback, then the user socket's tracked ns,
 then \"user\"."
   (or (and (fboundp 'clojure-find-ns) (clojure-find-ns))
       (port-current-buffer-ns)
-      (port-client-current-ns (port-session-user-conn session))
-      "user"))
+      (port-session-current-ns session)))
 
 (defun port-eval--echo-form (session code)
   "Echo CODE into SESSION's REPL buffer as if it had been typed there.

@@ -21,11 +21,6 @@
 (require 'port-tooling)
 (require 'xref)
 
-(defun port-xref--symbol-at-point ()
-  "Return the symbol at point as a string, or nil."
-  (when-let ((s (thing-at-point 'symbol t)))
-    (substring-no-properties s)))
-
 (defun port-xref--query (sym ns)
   "Build the Clojure form returning SYM's source location in NS.
 The map carries `:file' / `:line' from var metadata, plus `:url'
@@ -56,13 +51,11 @@ vars whose source lives inside a jar."
 (defun port-find-definition (sym)
   "Jump to the definition of SYM, defaulting to the symbol at point."
   (interactive
-   (list (or (port-xref--symbol-at-point)
+   (list (or (port-symbol-at-point)
              (read-string "Symbol: "))))
   (unless port-default-session
     (user-error "Port: not connected"))
-  (let* ((ns (or (port-client-current-ns
-                  (port-session-user-conn port-default-session))
-                 "user"))
+  (let* ((ns (port-session-current-ns port-default-session))
          (form (port-xref--query sym ns)))
     (port-tooling-call
      port-default-session form

@@ -41,9 +41,7 @@
 (defun port-completion--candidates (prefix)
   "Return a list of candidates matching PREFIX, or nil."
   (when port-default-session
-    (let* ((ns (or (port-client-current-ns
-                    (port-session-user-conn port-default-session))
-                   "user"))
+    (let* ((ns (port-session-current-ns port-default-session))
            (form (port-completion--query prefix ns))
            (result (port-tooling-call-sync port-default-session form
                                            port-completion-timeout)))

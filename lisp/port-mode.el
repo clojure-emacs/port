@@ -26,14 +26,9 @@
 (require 'port-stacktrace)
 (require 'port-xref)
 
-(defun port--symbol-at-point ()
-  "Return the symbol at point as a string, or nil."
-  (when-let ((sym (thing-at-point 'symbol t)))
-    (substring-no-properties sym)))
-
 (defun port--read-symbol (prompt)
   "Prompt with PROMPT for a Clojure symbol, defaulting to the one at point."
-  (let ((default (port--symbol-at-point)))
+  (let ((default (port-symbol-at-point)))
     (read-string
      (if default (format "%s (default %s): " prompt default) (concat prompt ": "))
      nil nil default)))

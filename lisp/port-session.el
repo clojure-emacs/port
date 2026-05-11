@@ -40,6 +40,19 @@
   (or port-default-session
       (user-error "Port: not connected; run `M-x port-connect' first")))
 
+(defun port-session-current-ns (session)
+  "Return SESSION's user-socket tracked namespace as a string.
+Falls back to \"user\" when the socket has no namespace yet."
+  (or (port-client-current-ns (port-session-user-conn session))
+      "user"))
+
+(defun port-symbol-at-point ()
+  "Return the symbol at point as a string with no text properties.
+A small shared helper so the various interactive commands don't
+each define their own copy.  Returns nil when nothing is at point."
+  (when-let ((s (thing-at-point 'symbol t)))
+    (substring-no-properties s)))
+
 (defun port-session-next-id! (session)
   "Allocate and return the next request id for SESSION."
   (cl-incf (port-session-next-id session)))
