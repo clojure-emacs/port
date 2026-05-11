@@ -20,6 +20,7 @@
 (require 'seq)
 (require 'port-client)
 (require 'port-completion)
+(require 'port-eldoc)
 (require 'port-session)
 (require 'port-stacktrace)
 
@@ -40,6 +41,11 @@
 When nil, output is appended at point-max; when non-nil, it's
 inserted above the prompt (preserving any typed-but-unsent input).")
 
+(defvar-local port-repl--current-prompt-length 0
+  "Width (in characters) of the prompt drawn at point-max.
+Captured when the prompt is inserted so it stays accurate even
+after the connection's tracked namespace changes mid-render.")
+
 (defvar-local port-repl-history nil
   "Ring of previously sent inputs (most recent first).")
 
@@ -48,6 +54,12 @@ inserted above the prompt (preserving any typed-but-unsent input).")
 
 (defvar-local port-repl--history-file nil
   "Resolved absolute path of the file backing this buffer's REPL history.")
+
+(defvar-local port-repl--history-disk-lines 0
+  "Number of lines currently on disk in `port-repl--history-file'.
+Tracked to bound the file's growth: once it exceeds twice the
+configured cap, the file is rewritten with the trimmed in-memory
+list.")
 
 (defcustom port-repl-history-file nil
   "Where REPL input history is persisted.
@@ -106,7 +118,8 @@ across sessions.  Set to t to disable persistence entirely."
   (setq-local comment-start ";")
   (setq-local indent-tabs-mode nil)
   (set-syntax-table (port-repl--clojure-syntax-table))
-  (port-completion-setup))
+  (port-completion-setup)
+  (port-eldoc-setup))
 
 (defun port-repl--clojure-syntax-table ()
   "Pick the best available Clojure-ish syntax table.
@@ -177,7 +190,8 @@ known."
 (defun port-repl--load-history ()
   "Populate `port-repl-history' from `port-repl--history-file'.
 Trims to `port-repl-history-size' and rewrites the file when the
-on-disk count exceeds the cap."
+on-disk count exceeds the cap.  Tracks the on-disk line count so
+`port-repl--append-history' can flip into a rewrite later, too."
   (let ((file port-repl--history-file))
     (when (and file (file-readable-p file))
       (let (entries)
@@ -191,11 +205,13 @@ on-disk count exceeds the cap."
               (error (forward-line 1)))))
         ;; entries is newest-first because we pushed oldest-first reads
         ;; onto the front.
-        (let ((trimmed (if (> (length entries) port-repl-history-size)
-                           (seq-take entries port-repl-history-size)
-                         entries)))
+        (let* ((on-disk (length entries))
+               (trimmed (if (> on-disk port-repl-history-size)
+                            (seq-take entries port-repl-history-size)
+                          entries)))
           (setq port-repl-history trimmed)
-          (when (and (> (length entries) port-repl-history-size)
+          (setq port-repl--history-disk-lines on-disk)
+          (when (and (> on-disk port-repl-history-size)
                      (file-writable-p file))
             (port-repl--rewrite-history)))))))
 
@@ -207,22 +223,29 @@ on-disk count exceeds the cap."
         (entries (reverse port-repl-history)))
     (when (and file (file-writable-p file))
       (with-temp-buffer
-        ;; Write oldest-first so that read order matches append order.
         (dolist (entry entries)
           (prin1 entry (current-buffer))
           (insert "\n"))
-        (write-region nil nil file nil 'silent)))))
+        (write-region nil nil file nil 'silent))
+      (setq port-repl--history-disk-lines (length entries)))))
 
 (defun port-repl--append-history (input)
-  "Append INPUT to `port-repl--history-file' if persistence is enabled."
+  "Append INPUT to `port-repl--history-file' if persistence is enabled.
+Flips to a full rewrite once the file holds more than twice
+`port-repl-history-size' lines so it can't grow without bound."
   (let ((file port-repl--history-file))
     (when (and file
                (or (file-writable-p file)
                    (file-writable-p (file-name-directory file))))
-      (with-temp-buffer
-        (prin1 input (current-buffer))
-        (insert "\n")
-        (write-region nil nil file 'append 'silent)))))
+      (cond
+       ((> port-repl--history-disk-lines (* 2 port-repl-history-size))
+        (port-repl--rewrite-history))
+       (t
+        (with-temp-buffer
+          (prin1 input (current-buffer))
+          (insert "\n")
+          (write-region nil nil file 'append 'silent))
+        (cl-incf port-repl--history-disk-lines))))))
 
 (defun port-repl--connection-handler (conn msg)
   "Forward MSG to CONN's REPL buffer."
@@ -233,14 +256,15 @@ on-disk count exceeds the cap."
 
 (defun port-repl--insert-prompt ()
   "Insert a fresh prompt at the end of the buffer."
-  (let ((inhibit-read-only t)
-        (ns (or (and port--connection
-                     (port-client-current-ns port--connection))
-                "user")))
+  (let* ((inhibit-read-only t)
+         (ns (or (and port--connection
+                      (port-client-current-ns port--connection))
+                 "user"))
+         (prompt (format "%s=> " ns)))
     (goto-char (point-max))
     (unless (bolp) (insert "\n"))
     (let ((start (point)))
-      (insert (format "%s=> " ns))
+      (insert prompt)
       (add-text-properties start (point)
                            '(read-only t
                              rear-nonsticky (read-only)
@@ -250,6 +274,7 @@ on-disk count exceeds the cap."
       (set-marker port-repl-prompt-marker (point)))
     (set-marker port-repl-input-start-marker (point))
     (set-marker-insertion-type port-repl-input-start-marker nil)
+    (setq port-repl--current-prompt-length (length prompt))
     (setq port-repl-prompt-active-p t)))
 
 (defun port-repl-handle-message (msg)
@@ -338,11 +363,14 @@ just append at point-max."
                            face ,face))))
 
 (defun port-repl--prompt-length ()
-  "Return the character length of the current prompt string."
-  (length (format "%s=> "
-                  (or (and port--connection
-                           (port-client-current-ns port--connection))
-                      "user"))))
+  "Return the character length of the prompt currently on screen.
+Reads from the buffer-local cache populated by
+`port-repl--insert-prompt'.  Doing it this way avoids a subtle bug
+where `port-client--filter' updates the connection's tracked ns
+*before* dispatching the message, so recomputing the prompt
+length on the fly would return the *next* prompt's length rather
+than the one we're about to erase."
+  port-repl--current-prompt-length)
 
 (defun port-repl-current-input ()
   "Return the text currently in the input area."
