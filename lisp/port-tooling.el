@@ -101,11 +101,13 @@ CALLBACK is invoked with the result alist, which has keys
 `:port/id', `:tag' (`:ok' or `:err'), `:val' (printed return value
 when `:ok'), `:ex' (printed Throwable->map when `:err'),
 `:ex-message' (just the exception's message when `:err'), `:out',
-`:err'."
+`:err'.  Returns the allocated request id so a sync caller can
+evict a stale callback on timeout."
   (let* ((id (port-session-next-id! session))
          (wrapped (format "(port.tooling/-eval %d (fn [] %s))" id form-string)))
     (port-session-register-callback session id callback)
-    (port-client-send (port-session-tool-conn session) wrapped)))
+    (port-client-send (port-session-tool-conn session) wrapped)
+    id))
 
 (defun port-tooling-user-eval (session ns code callback)
   "Evaluate CODE in namespace NS on SESSION's tool socket.
@@ -138,11 +140,16 @@ surrounding API is synchronous."
   (let* ((done nil)
          (result nil)
          (deadline (+ (float-time) (or timeout 2.0)))
-         (proc (port-client-process (port-session-tool-conn session))))
-    (port-tooling-call session form-string
-                       (lambda (r) (setq result r) (setq done t)))
+         (proc (port-client-process (port-session-tool-conn session)))
+         (id (port-tooling-call session form-string
+                                (lambda (r) (setq result r) (setq done t)))))
     (while (and (not done) (< (float-time) deadline))
       (accept-process-output proc 0.05))
+    (unless done
+      ;; Pending alist would otherwise hold the callback forever; a
+      ;; late response would still fire it harmlessly, but the entry
+      ;; is now stale.
+      (port-session-pop-callback session id))
     (and done result)))
 
 (defun port-tooling--dispatch (session msg)
