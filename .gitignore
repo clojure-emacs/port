@@ -12,3 +12,4 @@ TAGS
 dist
 lisp/port-autoloads.el
 lisp/port-pkg.el
+.port-history
