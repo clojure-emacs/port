@@ -95,9 +95,10 @@ correlated helper-command requests, then pops to the REPL buffer."
 (defun port-disconnect ()
   "Disconnect the current Port session (both sockets)."
   (interactive)
-  (when port-default-session
-    (port-session-shutdown port-default-session)
-    (message "Port disconnected.")))
+  (unless port-default-session
+    (user-error "Port: not connected"))
+  (port-session-shutdown port-default-session)
+  (message "Port disconnected."))
 
 (provide 'port)
 

@@ -92,23 +92,23 @@ the output."
 (defun port-macroexpand-1 ()
   "Macroexpand the form at point once via the tool socket."
   (interactive)
-  (let* ((bounds (bounds-of-thing-at-point 'sexp))
-         (form   (buffer-substring-no-properties (car bounds) (cdr bounds))))
-    (port-tooling-call
-     (port-current-session)
-     (format "(macroexpand-1 (quote %s))" form)
-     (lambda (result) (port--tool-emit "macroexpand-1" result)))))
+  (port--macroexpand "(macroexpand-1 (quote %s))" "macroexpand-1"))
 
 ;;;###autoload
 (defun port-macroexpand ()
   "Fully macroexpand the form at point via the tool socket."
   (interactive)
-  (let* ((bounds (bounds-of-thing-at-point 'sexp))
-         (form   (buffer-substring-no-properties (car bounds) (cdr bounds))))
-    (port-tooling-call
-     (port-current-session)
-     (format "(clojure.walk/macroexpand-all (quote %s))" form)
-     (lambda (result) (port--tool-emit "macroexpand" result)))))
+  (port--macroexpand "(clojure.walk/macroexpand-all (quote %s))" "macroexpand"))
+
+(defun port--macroexpand (form-template label)
+  "Send the sexp at point through FORM-TEMPLATE and emit under LABEL."
+  (let ((bounds (bounds-of-thing-at-point 'sexp)))
+    (unless bounds (user-error "Port: no sexp at point"))
+    (let ((form (buffer-substring-no-properties (car bounds) (cdr bounds))))
+      (port-tooling-call
+       (port-current-session)
+       (format form-template form)
+       (lambda (result) (port--tool-emit label result))))))
 
 ;;;###autoload
 (defun port-load-file (file)

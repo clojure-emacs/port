@@ -51,6 +51,13 @@
               (expect sent-form :to-equal "(in-ns 'my.ns)"))
           (kill-buffer buf))))))
 
+(describe "port-macroexpand-1"
+  (it "raises a user-error when point isn't on a sexp"
+    (with-temp-buffer
+      (let* ((session (port-mode-tests--make-session))
+             (port-default-session session))
+        (expect (port-macroexpand-1) :to-throw 'user-error)))))
+
 (provide 'port-mode-tests)
 
 ;;; port-mode-tests.el ends here
