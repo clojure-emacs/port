@@ -23,6 +23,7 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'port-client)
+(require 'port-tooling)
 (require 'port-xref)
 
 (defgroup port-stacktrace nil
@@ -36,8 +37,9 @@
 
 (defcustom port-stacktrace-hide-clojure-internals t
   "If non-nil, hide common Clojure/Java internal frames from the trace.
-Frames whose class starts with `clojure.lang.', `clojure.core',
-`java.', `sun.', or `nrepl.' are filtered out."
+Frames whose class starts with `clojure.lang.', `clojure.core$',
+`clojure.main', `java.', `javax.', `sun.', `jdk.', or `nrepl.'
+are filtered out (see `port-stacktrace--noise-frame-p')."
   :type 'boolean
   :group 'port-stacktrace)
 
@@ -258,15 +260,24 @@ common project source roots."
           (port-xref--visit found line)
         (message "Port: cannot resolve %s to a local file" file))))))
 
+(declare-function port-jack-in--detect-project-root "port-jack-in")
+
 (defun port-stacktrace--locate-relative (file)
-  "Try to locate a classpath-relative FILE under the current project."
-  (let ((roots (list default-directory
-                     (expand-file-name "src" default-directory)
-                     (expand-file-name "test" default-directory)
-                     (expand-file-name "src/main/clojure" default-directory)
-                     (expand-file-name "src/test/clojure" default-directory))))
-    (cl-loop for root in roots
-             for candidate = (expand-file-name file root)
+  "Try to locate a classpath-relative FILE under the current project.
+Anchors the search at the jack-in-detected project root when
+possible (so a stacktrace rendered from a sub-directory still
+resolves frames against the top-level `src/' tree), falling back
+to `default-directory'."
+  (let* ((root  (or (and (fboundp 'port-jack-in--detect-project-root)
+                         (port-jack-in--detect-project-root))
+                    default-directory))
+         (roots (list root
+                      (expand-file-name "src" root)
+                      (expand-file-name "test" root)
+                      (expand-file-name "src/main/clojure" root)
+                      (expand-file-name "src/test/clojure" root))))
+    (cl-loop for r in roots
+             for candidate = (expand-file-name file r)
              when (file-exists-p candidate) return candidate)))
 
 (defun port-stacktrace-next-frame ()
@@ -292,12 +303,10 @@ common project source roots."
 
 (defun port-stacktrace-parse (val)
   "Parse VAL — a printed Throwable->map string — into an alist.
-Returns nil if VAL doesn't parse as a map."
-  (when (stringp val)
-    (condition-case _
-        (let ((parsed (car (port-client--read val 0))))
-          (and (consp parsed) (consp (car parsed)) parsed))
-      (error nil))))
+Returns nil if VAL isn't a string or doesn't parse as a map.
+A thin wrapper around `port-tooling--read-result' so the two
+parse-as-map paths share an implementation."
+  (and (stringp val) (port-tooling--read-result val)))
 
 (defun port-stacktrace-pop-from-result (result)
   "Display a stacktrace buffer for an `:err' RESULT from the tool socket.
