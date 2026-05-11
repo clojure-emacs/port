@@ -31,9 +31,11 @@ send a Clojure form and read back a sequence of EDN messages tagged `:ret`,
 about, at the cost of features that nREPL middleware would otherwise provide.
 
 Where CIDER asks the server (via middleware) for things like documentation or
-completion, Port follows monroe's lead and implements such commands by simply
-evaluating a Clojure form (e.g. `(clojure.repl/doc foo)`) and printing the
-result into the REPL buffer.
+completion, Port leans on the same trick `inf-clojure` uses: just evaluate a
+Clojure form (e.g. `(clojure.repl/doc foo)`) and read what the REPL prints
+back. monroe is a bit different — it talks plain nREPL, so most of what it
+needs (eval, interrupt, load-file, session management) is already a built-in
+op; it only falls back to sending forms for things stock nREPL doesn't cover.
 
 ## How does it compare to other Clojure tools for Emacs?
 
