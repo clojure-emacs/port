@@ -190,8 +190,10 @@ Return (LIST . NEW-POS) where LIST is an Elisp list of the elements."
           (setq pos (cdr v)))))))
 
 (defun port-client--read-string (s pos)
-  "Read a string from S at POS (just past opening quote)."
-  (let ((out (make-string 0 0))
+  "Read a string from S at POS (just past opening quote).
+Accumulates chars into a list and `apply'es `string' at the end
+so an N-byte string isn't quadratic in N."
+  (let ((chars '())
         (len (length s))
         (done nil))
     (while (not done)
@@ -204,26 +206,31 @@ Return (LIST . NEW-POS) where LIST is an Elisp list of the elements."
          ((eq c ?\\)
           (when (>= (1+ pos) len) (signal 'port-edn-incomplete nil))
           (let ((esc (aref s (1+ pos))))
-            (setq out
-                  (concat out
-                          (pcase esc
-                            (?n  "\n")
-                            (?t  "\t")
-                            (?r  "\r")
-                            (?\\ "\\")
-                            (?\" "\"")
-                            (?b  "\b")
-                            (?f  "\f")
-                            (?/  "/")
-                            (?u  (let ((hex (substring s (+ pos 2) (+ pos 6))))
-                                   (cl-incf pos 4)
-                                   (char-to-string (string-to-number hex 16))))
-                            (_   (char-to-string esc))))))
-          (cl-incf pos 2))
+            (cond
+             ((eq esc ?u)
+              ;; \uXXXX -- the 4 hex digits must already be present;
+              ;; otherwise the chunk is incomplete.
+              (when (< len (+ pos 6)) (signal 'port-edn-incomplete nil))
+              (push (string-to-number (substring s (+ pos 2) (+ pos 6)) 16)
+                    chars)
+              (cl-incf pos 6))
+             (t
+              (push (pcase esc
+                      (?n  ?\n)
+                      (?t  ?\t)
+                      (?r  ?\r)
+                      (?\\ ?\\)
+                      (?\" ?\")
+                      (?b  ?\b)
+                      (?f  ?\f)
+                      (?/  ?/)
+                      (_   esc))
+                    chars)
+              (cl-incf pos 2)))))
          (t
-          (setq out (concat out (char-to-string c)))
+          (push c chars)
           (cl-incf pos)))))
-    (cons out pos)))
+    (cons (apply #'string (nreverse chars)) pos)))
 
 (defun port-client--read-keyword (s pos)
   "Read a keyword from S at POS (just past colon).

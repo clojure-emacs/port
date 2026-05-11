@@ -109,7 +109,17 @@
 
   (it "signals `port-edn-incomplete' on an unterminated vector"
     (expect (port-client--read "[1 2" 0)
-            :to-throw 'port-edn-incomplete)))
+            :to-throw 'port-edn-incomplete))
+
+  (it "signals `port-edn-incomplete' on a truncated \\u escape"
+    ;; `\u00' was previously an out-of-range substring slice that
+    ;; bubbled up as a generic error and dropped a byte.
+    (expect (port-client--read "\"\\u00" 0)
+            :to-throw 'port-edn-incomplete))
+
+  (it "decodes a full \\uXXXX escape"
+    (expect (car (port-client--read "\"\\u0041\"" 0))
+            :to-equal "A")))
 
 (describe "port-repl--input-complete-p"
 
