@@ -161,7 +161,10 @@ on the REPL session (defines vars, switches namespace)."
                          (and buffer-file-name buffer-file-name) t)))
   (when (buffer-modified-p) (save-buffer))
   (port-repl-emit-comment (format "load-file %s" file))
-  (port-eval-string (format port-load-file-form file)))
+  (port-eval-string (format port-load-file-form file))
+  ;; New vars are about to land; drop the completion cache so they
+  ;; show up on the next keystroke instead of waiting for the TTL.
+  (port-completion-invalidate))
 
 ;;;###autoload
 (defun port-set-ns (ns)
@@ -174,7 +177,10 @@ where the namespace actually persists."
    (list (read-string "Namespace: "
                       (or (port-current-buffer-ns) "user"))))
   (port-eval--send-via-repl (port-current-session)
-                            (format port-set-ns-form ns)))
+                            (format port-set-ns-form ns))
+  ;; The new ns has its own ns-map; drop the cache so capf re-fetches
+  ;; the right set rather than serving the previous ns's symbols.
+  (port-completion-invalidate))
 
 ;;;###autoload
 (defun port-switch-to-repl ()

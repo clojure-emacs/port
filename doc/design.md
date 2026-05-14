@@ -333,15 +333,29 @@ need our own debounce.
 ### `port-completion.el`
 
 Completion-at-point is synchronous in Emacs — the API expects a list
-of candidates returned right now.  We use `port-tooling-call-sync`
-with a 2-second timeout.
+of candidates returned right now.  Port copes by *caching* the full
+symbol list per namespace and filtering Elisp-side on each keystroke.
+The cache is warmed asynchronously on `port-mode` enable (via
+`port-tooling-call`, so the connection round-trip overlaps with the
+user typing the first character), and the cached entry is reused
+until `port-completion-cache-ttl` seconds have passed, or until
+`port-load-file' / `port-set-ns' explicitly invalidate it.  A capf
+that arrives before the warm-up lands falls through to a synchronous
+`port-tooling-call-sync` with the existing 2-second budget.
 
 The Clojure side walks `ns-map` of the buffer's namespace, filters
-by prefix, dedups, sorts, and joins with newlines.  The Elisp side
-splits on newline.  This is not the most efficient encoding (a vector
-would be more natural) but it sidesteps the EDN reader's lack of
-list/vector support without forcing a parser extension before it's
-needed elsewhere.
+by prefix (which is always the empty string in caching mode, so the
+filter is a no-op), dedups, sorts, and joins with newlines.  The
+Elisp side splits on newline.  Not the most efficient encoding (a
+vector would be more natural) but it sidesteps the EDN reader's
+lack of vector support for non-trivial leaves without forcing a
+parser extension before it's needed elsewhere.
+
+Caching can be disabled with `port-completion-use-cache` (nil), in
+which case the form is called with the actual user prefix on every
+keystroke — the historical behaviour, useful when a custom form
+template (e.g. Compliment) does richer prefix-aware ranking that
+the cache + Elisp filter would defeat.
 
 ### `port-xref.el`
 
@@ -533,8 +547,11 @@ architecture.
   shadow-cljs, and per-project alias selection (`-A:dev` etc.) are not
   yet supported; users with those setups can still launch the prepl
   manually and `M-x port-connect`.
-- Completion is synchronous; under network latency or auto-popup
-  setups (corfu, company auto-complete) it can feel sluggish.
+- Completion blocks on the first capf in a namespace while the
+  symbol cache is being populated (the warm-up usually beats the
+  user to it, but a slow prepl or remote connection makes the
+  first popup noticeable).  Subsequent capf calls filter the
+  cache Elisp-side and don't touch the wire.
 - Single-session only.  Connecting again replaces the previous
   session.
 - `port-repl-interrupt` is a stub.  prepl has no interrupt op;

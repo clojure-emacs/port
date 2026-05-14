@@ -2,6 +2,16 @@
 
 ## 0.2.0-snapshot (unreleased)
 
+- `completion-at-point` no longer blocks Emacs on every keystroke.
+  Port now fetches the full symbol list for the buffer's namespace
+  once and filters Elisp-side on subsequent capf calls; corfu /
+  company-mode auto-popup feels instant after the first hit.  The
+  cache is warmed asynchronously when `port-mode' is enabled with a
+  session live, expires after `port-completion-cache-ttl` seconds
+  (default 10), and gets cleared eagerly when `port-load-file' or
+  `port-set-ns' runs.  `M-x port-completion-clear-cache' forces a
+  refresh.  Set `port-completion-use-cache` to nil for the previous
+  one-query-per-keystroke behaviour.
 - Trace-frame jumps in `*port-stacktrace*` now reach jar-only
   frames.  `RET` on a frame whose `:file` doesn't resolve under
   `default-directory` or a project source root now asks the JVM
