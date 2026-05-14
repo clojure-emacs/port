@@ -230,7 +230,7 @@ candidates today:
 | Dialect              | Status       | Notes                                            |
 |----------------------|--------------|--------------------------------------------------|
 | Clojure (JVM)        | Supported    | Default. All forms target `clojure.repl/*`.       |
-| [Babashka][]         | Supported    | Drop-in. `source` on built-ins needs bb ≥ 1.12.216. |
+| [Babashka][]         | Supported    | Jack-in via `bb -e ...`; `source` on built-ins needs bb ≥ 1.12.216. `port-jack-in-extra-deps` doesn't apply (bb resolves the classpath from `bb.edn`). |
 | [ClojureCLR][]       | Supported    | 1:1 port of `clojure.core.server`.                |
 | [ClojureScript][cljs] | Experimental | `cljs.core.server/io-prepl` exists, but the ecosystem is on piggieback+nREPL. Use the override defcustoms. |
 

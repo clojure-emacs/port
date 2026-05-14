@@ -2,6 +2,13 @@
 
 ## 0.2.0-snapshot (unreleased)
 
+- `M-x port` jacks in to babashka projects (`bb.edn`).  The
+  spawned command is `bb -e <server-form>`, identical to the
+  tools-deps / Leiningen invocations modulo the program name and
+  the dropped `-Sdeps` step (bb resolves classpath via `bb.edn`).
+  Pretty-print `:valf` works in bb too, so taps and eval results
+  arrive multi-line.  `port-jack-in-babashka-program` overrides
+  the `bb` binary; `port-jack-in-extra-deps` is ignored for bb.
 - `completion-at-point` no longer blocks Emacs on every keystroke.
   Port now fetches the full symbol list for the buffer's namespace
   once and filters Elisp-side on subsequent capf calls; corfu /

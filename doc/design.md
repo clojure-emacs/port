@@ -543,10 +543,12 @@ architecture.
 
 ## Known limitations
 
-- Jack-in covers `deps.edn` and `project.clj` only.  Babashka,
-  shadow-cljs, and per-project alias selection (`-A:dev` etc.) are not
-  yet supported; users with those setups can still launch the prepl
-  manually and `M-x port-connect`.
+- Jack-in covers `deps.edn`, `project.clj`, and `bb.edn`.
+  shadow-cljs and per-project alias selection (`-A:dev` etc.) are
+  not yet supported; users with those setups can still launch the
+  prepl manually and `M-x port-connect`.  `port-jack-in-extra-deps`
+  is honoured for tools-deps and Leiningen but not for babashka,
+  whose classpath comes from `bb.edn`.
 - Completion blocks on the first capf in a namespace while the
   symbol cache is being populated (the warm-up usually beats the
   user to it, but a slow prepl or remote connection makes the

@@ -30,6 +30,10 @@
   "Command used to launch Leiningen."
   :type 'string :group 'port)
 
+(defcustom port-jack-in-babashka-program "bb"
+  "Command used to launch Babashka."
+  :type 'string :group 'port)
+
 (defcustom port-jack-in-startup-timeout 30
   "Seconds to wait for the prepl server to start accepting connections."
   :type 'number :group 'port)
@@ -177,7 +181,11 @@ spliced into the command line via `-Sdeps' (tools-deps) or chained
         (when deps (port-jack-in--lein-deps-args deps))
         (list "trampoline" "run" "-m" "clojure.main" "-e" form)))
       ('babashka
-       (user-error "Port: babashka jack-in is not yet supported"))
+       ;; Babashka supports `clojure.core.server/start-server' + io-prepl
+       ;; directly, so the same `--server-form' works.  Extra deps are
+       ;; ignored: bb resolves classpath through bb.edn rather than
+       ;; inline `-Sdeps' coords.
+       (list port-jack-in-babashka-program "-e" form))
       (_ (error "Port: unknown project type %S" project-type)))))
 
 (defun port-jack-in--wait-for-port (port timeout)

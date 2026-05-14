@@ -99,9 +99,21 @@ clean up."
     (let ((cmd (port-jack-in--build-command 'bare 5555)))
       (expect (car cmd) :to-equal "clojure")))
 
-  (it "babashka isn't supported yet -- raise a user-error"
-    (expect (port-jack-in--build-command 'babashka 5555)
-            :to-throw 'user-error)))
+  (it "babashka routes through bb -e <server-form>"
+    (let ((cmd (port-jack-in--build-command 'babashka 5555)))
+      (expect (car cmd) :to-equal "bb")
+      (expect (member "-e" cmd) :to-be-truthy)
+      (expect (cl-some (lambda (s) (string-match-p ":port 5555" s)) cmd)
+              :to-be-truthy)))
+
+  (it "babashka ignores `port-jack-in-extra-deps' (resolved via bb.edn)"
+    (let* ((port-jack-in-extra-deps '((some.lib/x . "1.0.0")))
+           (cmd (port-jack-in--build-command 'babashka 5555)))
+      (expect (member "-Sdeps" cmd) :to-be nil)
+      (expect (cl-some (lambda (s) (and (stringp s)
+                                        (string-match-p "some.lib/x" s)))
+                       cmd)
+              :to-be nil))))
 
 (describe "port-jack-in--build-command with extra-deps"
 
