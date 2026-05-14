@@ -24,6 +24,7 @@
 (require 'port-eldoc)
 (require 'port-completion)
 (require 'port-stacktrace)
+(require 'port-tap)
 (require 'port-xref)
 
 (defcustom port-doc-form "(with-out-str (clojure.repl/doc %s))"
@@ -195,6 +196,8 @@ where the namespace actually persists."
     (define-key map (kbd "C-c C-m") #'port-macroexpand-1)
     (define-key map (kbd "C-c M-n") #'port-set-ns)
     (define-key map (kbd "C-c C-z") #'port-switch-to-repl)
+    (define-key map (kbd "C-c C-t v") #'port-show-taps)
+    (define-key map (kbd "C-c C-t c") #'port-clear-taps)
     (define-key map (kbd "M-.")     #'port-find-definition)
     map)
   "Keymap for `port-mode'.")

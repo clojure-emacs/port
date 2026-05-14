@@ -169,6 +169,7 @@ lisp/
 ├── port-eldoc.el        async arglist lookup (eldoc-documentation-functions)
 ├── port-completion.el   sync ns-map walk for completion-at-point
 ├── port-stacktrace.el   parsed Throwable->map renderer + frame navigation
+├── port-tap.el          *port-taps* history buffer for tap> values
 └── port-xref.el         var meta -> file:line for find-definition (M-.)
 ```
 
@@ -381,6 +382,27 @@ the `:trace` frames.  Internal frames (`clojure.lang.*`,
 default; the user can flip `port-stacktrace-hide-clojure-internals`
 to see everything.  `RET` on a frame attempts to visit its source,
 trying `default-directory` and a few common project source roots.
+
+### `port-tap.el`
+
+A dedicated `*port-taps*` history buffer that accumulates values
+published via `tap>`.  `io-prepl` already wires `tap>` to emit
+`:tag :tap` messages on the user socket; `port-repl.el` keeps the
+one-line `;; tap> <val>` preview in the REPL but also calls
+`port-tap-append` so the full value lands in a clojure-mode buffer
+where the user can browse, copy, and navigate it.
+
+Entries are separated by a `;; tap @ HH:MM:SS` header; the buffer is
+capped at `port-tap-max-entries` (oldest entry dropped on overflow).
+`port-show-taps` and `port-clear-taps` are bound to `C-c C-t v` and
+`C-c C-t c` in `port-mode`.
+
+In jack-in mode `port-jack-in-pretty-print` (default `t`) configures
+`io-prepl` with a `clojure.pprint`-based `:valf`, so tapped values
+(and interactive eval results) arrive multi-line and indented on the
+wire.  In `port-connect` mode the user controls how the prepl was
+started, so we fall back to `clojure-mode`-driven `indent-region` on
+the inserted value as a best-effort.
 
 ## Wire format and the EDN-ish reader
 

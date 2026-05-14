@@ -23,6 +23,7 @@
 (require 'port-eldoc)
 (require 'port-session)
 (require 'port-stacktrace)
+(require 'port-tap)
 
 (defvar-local port--session nil
   "The `port-session' associated with this REPL buffer.")
@@ -287,6 +288,7 @@ MSG is an alist as produced by `port-client--parse-messages'."
      ((and (eq tag :ret) (alist-get :exception msg))
       (port-repl--handle-exception val))
      (t
+      (when (eq tag :tap) (port-tap-append val))
       (port-repl--insert-output
        (pcase tag
          (:ret  (cons (format "%s\n" val) 'port-repl-result-face))

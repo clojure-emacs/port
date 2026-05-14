@@ -19,6 +19,8 @@ spirit of [CIDER](https://github.com/clojure-emacs/cider) and
   navigable frames.
 - Eldoc, completion-at-point, doc/source/apropos/macroexpand helpers,
   and `M-.` find-definition that follows into jar sources.
+- Dedicated `*port-taps*` buffer that accumulates values published via
+  `tap>`, with `C-c C-t v` to view and `C-c C-t c` to clear.
 
 ## Why prepl?
 
@@ -163,10 +165,24 @@ then attach from Emacs with `M-x port-connect` (defaults to `localhost:5555`).
 | `C-c C-m` | `port-macroexpand-1`          |
 | `C-c M-n` | `port-set-ns`                 |
 | `C-c C-z` | `port-switch-to-repl`         |
+| `C-c C-t v` | `port-show-taps`            |
+| `C-c C-t c` | `port-clear-taps`           |
 | `M-.`     | `port-find-definition`        |
 
 All output, including evaluation results from source buffers, ends up in the
 REPL buffer.
+
+## Tap support
+
+Values published via `tap>` show up in two places: a one-line preview in the
+REPL buffer, and the dedicated `*port-taps*` history buffer, which keeps the
+full pretty-printed values for browsing. Use `C-c C-t v` to pop the history
+buffer and `C-c C-t c` to clear it. The buffer is capped at
+`port-tap-max-entries` (default 100), oldest entry dropped on overflow.
+
+When Port jacks in the JVM itself, it configures `io-prepl` with a
+`clojure.pprint`-based `:valf`, so `:ret` and `:tap` values arrive
+pretty-printed already. Set `port-jack-in-pretty-print` to nil to opt out.
 
 ## Dialect support
 

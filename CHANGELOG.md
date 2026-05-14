@@ -2,6 +2,12 @@
 
 ## 0.2.0-snapshot (unreleased)
 
+- Dedicated `*port-taps*` history buffer for values published via
+  `tap>`.  Each tap is appended with a timestamp header and rendered
+  in `clojure-mode` (or `clojure-ts-mode`) for syntax highlighting.
+  `port-show-taps` / `port-clear-taps` are bound to `C-c C-t v` /
+  `C-c C-t c` in `port-mode`; the buffer is capped at
+  `port-tap-max-entries` (default 100).
 - `port-jack-in-extra-deps` defcustom: alist of `(DEP . VERSION)`
   pairs that get spliced into the JVM start command at jack-in
   (`clojure -Sdeps {...}` for tools-deps, chained
