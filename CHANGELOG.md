@@ -2,6 +2,14 @@
 
 ## 0.2.0-snapshot (unreleased)
 
+- Trace-frame jumps in `*port-stacktrace*` now reach jar-only
+  frames.  `RET` on a frame whose `:file` doesn't resolve under
+  `default-directory` or a project source root now asks the JVM
+  via `clojure.java.io/resource` over the tool socket; jar URLs
+  open the slurped source in the same `*port-jar: ...*` buffer
+  cache `M-.` uses, `file:` URLs visit the path directly.  Two
+  new defcustoms: `port-stacktrace-frame-form` (the lookup
+  template) and `port-stacktrace-frame-timeout`.
 - **Breaking:** `port-find-definition` is gone; replaced by a real
   `xref-backend-functions` entry installed by `port-mode`.  The
   default `M-.` / `M-,` bindings now route through Port whenever

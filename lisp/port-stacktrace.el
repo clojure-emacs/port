@@ -35,6 +35,32 @@
   :type 'boolean
   :group 'port-stacktrace)
 
+(defcustom port-stacktrace-frame-form
+  (concat "(let [url (clojure.java.io/resource %S)"
+          "      jar? (and url (.startsWith (str url) \"jar:\"))]"
+          "  (when url"
+          "    {:file %S"
+          "     :url (str url)"
+          "     :contents (when jar? (try (slurp url)"
+          "                               (catch Throwable _ nil)))}))")
+  "Format string for the trace-frame source-resolution query.
+%S is replaced twice with the classpath-relative file path
+recorded in the `Throwable->map' frame (first as the lookup
+argument to `clojure.java.io/resource', then echoed back into the
+result map's `:file' key).  The form must return a map with
+`:file', `:url', and optionally `:contents' (slurped source when
+the URL is a jar URL), or nil if the file isn't on the classpath.
+
+Used by `port-stacktrace-jump' as the fall-back when local
+resolution (project roots, `default-directory') doesn't find the
+file.  JVM-only; non-JVM dialects need a rewrite or should set
+this to a form that always returns nil."
+  :type 'string :group 'port-stacktrace)
+
+(defcustom port-stacktrace-frame-timeout 2.0
+  "Seconds to wait for a frame-resolution response on the tool socket."
+  :type 'number :group 'port-stacktrace)
+
 (defcustom port-stacktrace-hide-clojure-internals t
   "If non-nil, hide common Clojure/Java internal frames from the trace.
 Frames whose class starts with `clojure.lang.', `clojure.core$',
@@ -246,7 +272,9 @@ provided alongside the printed map by the tool wrapper).  When
   "Best-effort visit of FILE at LINE.
 File paths in `Throwable->map' are typically classpath-relative.
 We try (1) absolute paths, (2) under `default-directory', (3)
-common project source roots."
+common project source roots; (4) when a Port session is live and
+none of those land, fall back to asking the JVM via
+`port-stacktrace-frame-form' so jar-only frames become navigable."
   (cond
    ((or (null file) (equal file "?"))
     (message "Port: no file recorded for this frame"))
@@ -256,9 +284,64 @@ common project source roots."
       (message "Port: %s is not locally accessible" file)))
    (t
     (let ((found (port-stacktrace--locate-relative file)))
-      (if found
-          (port-xref--visit found line)
-        (message "Port: cannot resolve %s to a local file" file))))))
+      (cond
+       (found (port-xref--visit found line))
+       (port-default-session
+        (port-stacktrace--resolve-on-jvm file line))
+       (t (message "Port: cannot resolve %s to a local file" file)))))))
+
+(defun port-stacktrace--resolve-on-jvm (file line)
+  "Ask the JVM to resolve FILE on its classpath and visit at LINE.
+Async: fires `port-stacktrace-frame-form' on the tool socket and
+visits whatever the response describes.  Jar URLs with slurped
+`:contents' open a `*port-jar: ...*' buffer (sharing the cache
+with `port-find-definition' on the xref backend); `file:' URLs
+visit the underlying absolute path."
+  (message "Port: resolving %s on the JVM..." file)
+  (port-tooling-call
+   port-default-session
+   (format port-stacktrace-frame-form file file)
+   (lambda (result)
+     (cond
+      ((not (eq :ok (alist-get :tag result)))
+       (message "Port: frame lookup of %s failed: %s"
+                file (or (alist-get :ex-message result) "unknown error")))
+      (t
+       (let ((decoded (port-tooling-decode-val (alist-get :val result))))
+         (cond
+          ((null decoded)
+           (message "Port: %s is not on the JVM's classpath" file))
+          ((not (consp decoded))
+           (message "Port: unexpected response for %s" file))
+          (t
+           (port-stacktrace--visit-resolved decoded line)))))))))
+
+(defun port-stacktrace--visit-resolved (decoded line)
+  "Open the location DECODED carries, at LINE.
+DECODED is the parsed map returned by `port-stacktrace-frame-form'.
+Jar URLs with slurped `:contents' are rendered into the shared
+`*port-jar: ...*' buffer cache; `file:' URLs are stripped to their
+absolute path and visited; anything else degrades to a message."
+  (let ((file     (alist-get :file decoded))
+        (url      (alist-get :url decoded))
+        (contents (alist-get :contents decoded)))
+    (cond
+     ((and (stringp url) (string-prefix-p "jar:" url) (stringp contents))
+      (xref-push-marker-stack)
+      (let ((buf (port-xref--get-or-create-jar-buffer url contents)))
+        (pop-to-buffer-same-window buf)
+        (when line
+          (goto-char (point-min))
+          (forward-line (1- line)))))
+     ((and (stringp url) (string-prefix-p "file:" url))
+      (let ((path (substring url (length "file:"))))
+        (if (file-exists-p path)
+            (port-xref--visit path line)
+          (message "Port: resolved %s to %s but the file isn't accessible"
+                   file path))))
+     (t
+      (message "Port: %s resolved to %s but no usable target"
+               file (or url "?"))))))
 
 (declare-function port-jack-in--detect-project-root "port-jack-in")
 

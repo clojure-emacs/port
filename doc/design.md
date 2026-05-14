@@ -399,7 +399,14 @@ the `:trace` frames.  Internal frames (`clojure.lang.*`,
 `clojure.core$*`, `java.*`, `sun.*`, `nrepl.*`) are filtered by
 default; the user can flip `port-stacktrace-hide-clojure-internals`
 to see everything.  `RET` on a frame attempts to visit its source,
-trying `default-directory` and a few common project source roots.
+trying `default-directory` and a few common project source roots
+first.  When those don't find it and a Port session is live, the
+jump falls back to `port-stacktrace-frame-form` on the tool
+socket — the JVM is asked for the file via
+`clojure.java.io/resource`, and when the URL points inside a jar
+the contents get slurped and rendered into the same `*port-jar:
+...*` buffer cache the xref backend uses.  Jar-only frames thus
+become navigable the same way `M-.` on a `clojure.core` var is.
 
 ### `port-test.el`
 
@@ -526,12 +533,6 @@ architecture.
   shadow-cljs, and per-project alias selection (`-A:dev` etc.) are not
   yet supported; users with those setups can still launch the prepl
   manually and `M-x port-connect`.
-- Trace-frame source resolution is best-effort.  Frames whose
-  `:file` is a classpath-relative basename only resolve when the
-  file is found under `default-directory` or a common project
-  source root; we don't currently round-trip back to the JVM to
-  ask `clojure.java.io/resource` per frame the way the M-. path
-  does.
 - Completion is synchronous; under network latency or auto-popup
   setups (corfu, company auto-complete) it can feel sluggish.
 - Single-session only.  Connecting again replaces the previous
@@ -544,12 +545,9 @@ architecture.
 
 In rough priority order:
 
-1. Trace-frame source resolution via the tool socket (round-trip
-   to `clojure.java.io/resource` per frame), so jar-only frames
-   become navigable too.
-2. Jack-in for shadow-cljs, plus per-project alias selection.
-3. Multi-session support keyed per clojure-mode buffer.
-4. CIDER-style result overlays (deliberately listed last; the
+1. Jack-in for shadow-cljs, plus per-project alias selection.
+2. Multi-session support keyed per clojure-mode buffer.
+3. CIDER-style result overlays (deliberately listed last; the
    "all output goes to the REPL" UX is a deliberate choice).
 
 ## Versioning

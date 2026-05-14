@@ -16,7 +16,7 @@ spirit of [CIDER](https://github.com/clojure-emacs/cider) and
 - Interactive evaluation from source buffers (`C-c C-e`, `C-c C-c`, ...),
   pretty-printed via `clojure.pprint` with configurable length/level caps.
 - Structured stacktrace buffer for exceptions: cause chain, ex-data,
-  navigable frames.
+  navigable frames (including jar-only ones, resolved on the JVM).
 - Eldoc, completion-at-point, doc/source/apropos/macroexpand helpers,
   and an xref backend for `M-.` / `xref-find-apropos` that follows
   into jar sources.

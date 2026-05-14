@@ -96,6 +96,56 @@
              '((:tag . :err) (:ex . "garbage")))
             :to-be nil)))
 
+(describe "port-stacktrace-frame-form"
+  (it "embeds the file path twice (resource lookup + echo)"
+    (let ((form (format port-stacktrace-frame-form
+                        "clojure/core.clj" "clojure/core.clj")))
+      (expect form :to-match "clojure.java.io/resource \"clojure/core.clj\"")
+      (expect form :to-match ":file \"clojure/core.clj\"")
+      (expect form :to-match "\\.startsWith")
+      (expect form :to-match "slurp url"))))
+
+(describe "port-stacktrace--visit-resolved"
+
+  (it "opens a jar buffer when the URL is a jar URL with contents"
+    (let* ((url "jar:file:/tmp/foo.jar!/inner/stack.clj")
+           (buf-name (port-xref--jar-buffer-name url))
+           (decoded `((:file . "inner/stack.clj")
+                      (:url  . ,url)
+                      (:contents . "(ns inner.stack)\n(defn boom [] :no)\n"))))
+      (when (get-buffer buf-name) (kill-buffer buf-name))
+      (unwind-protect
+          (save-window-excursion
+            (port-stacktrace--visit-resolved decoded 2)
+            (let ((buf (get-buffer buf-name)))
+              (expect buf :to-be-truthy)
+              (with-current-buffer buf
+                (expect buffer-read-only :to-be-truthy)
+                (expect (line-number-at-pos) :to-equal 2))))
+        (when (get-buffer buf-name)
+          (kill-buffer buf-name)))))
+
+  (it "visits the path stripped from a file: URL when accessible"
+    (let* ((tmp (make-temp-file "port-stack-resolved" nil ".clj"))
+           (decoded `((:file . "x.clj") (:url . ,(concat "file:" tmp)))))
+      (unwind-protect
+          (save-window-excursion
+            (with-temp-file tmp (insert "(ns x)\n"))
+            (port-stacktrace--visit-resolved decoded 1)
+            (expect (buffer-file-name) :to-equal tmp))
+        (when (get-file-buffer tmp)
+          (kill-buffer (get-file-buffer tmp)))
+        (delete-file tmp))))
+
+  (it "messages and bails when no usable target is present"
+    (let ((messaged nil))
+      (cl-letf (((symbol-function 'message)
+                 (lambda (fmt &rest args)
+                   (setq messaged (apply #'format fmt args)))))
+        (port-stacktrace--visit-resolved
+         '((:file . "x.clj") (:url . "weird-protocol://nope")) 3))
+      (expect messaged :to-match "no usable target"))))
+
 (provide 'port-stacktrace-tests)
 
 ;;; port-stacktrace-tests.el ends here
