@@ -20,7 +20,12 @@
       (expect q :to-match ":line (:line m)")
       (expect q :to-match "clojure.java.io/resource")
       (expect q :to-match ":url (some-> url str)")
-      (expect q :to-match ":contents "))))
+      (expect q :to-match ":contents ")))
+
+  (it "honours overrides of `port-xref-form'"
+    (let ((port-xref-form "(my-dialect/find-def '%s '%s)"))
+      (expect (port-xref--query "foo" "my.ns")
+              :to-equal "(my-dialect/find-def 'my.ns 'foo)"))))
 
 (describe "port-tooling-decode-val for an xref result map"
 

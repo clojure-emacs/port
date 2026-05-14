@@ -58,6 +58,48 @@
              (port-default-session session))
         (expect (port-macroexpand-1) :to-throw 'user-error)))))
 
+(describe "helper-form defcustom overrides"
+
+  (cl-flet ((capture (cmd-fn)
+              (let* ((session (port-mode-tests--make-session))
+                     (port-default-session session)
+                     captured)
+                (cl-letf (((symbol-function 'port-tooling-call)
+                           (lambda (_session form _cb) (setq captured form))))
+                  (funcall cmd-fn))
+                captured)))
+
+    (it "port-doc uses `port-doc-form' as a template"
+      (let ((port-doc-form "(my.repl/doc %s)"))
+        (expect (capture (lambda () (port-doc "foo")))
+                :to-equal "(my.repl/doc foo)")))
+
+    (it "port-source uses `port-source-form'"
+      (let ((port-source-form "(cljs.repl/source %s)"))
+        (expect (capture (lambda () (port-source "foo")))
+                :to-equal "(cljs.repl/source foo)")))
+
+    (it "port-apropos uses `port-apropos-form' with %S quoting"
+      (let ((port-apropos-form "(my.search %S)"))
+        (expect (capture (lambda () (port-apropos "needle")))
+                :to-equal "(my.search \"needle\")")))))
+
+(describe "port-set-ns-form override"
+  (it "is honoured when the user replaces it"
+    (let* ((session (port-mode-tests--make-session))
+           (port-default-session session)
+           (port-eval-display 'repl)
+           (port-set-ns-form "(my-dialect/in-ns %s)")
+           (buf (port-repl-create-buffer session))
+           sent-form)
+      (unwind-protect
+          (progn
+            (cl-letf (((symbol-function 'port-client-send)
+                       (lambda (_conn form) (setq sent-form form))))
+              (port-set-ns "my.ns"))
+            (expect sent-form :to-equal "(my-dialect/in-ns my.ns)"))
+        (kill-buffer buf)))))
+
 (provide 'port-mode-tests)
 
 ;;; port-mode-tests.el ends here

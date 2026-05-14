@@ -25,18 +25,32 @@
   :type 'number
   :group 'port)
 
+(defcustom port-completion-form
+  (concat "(let [ns (or (find-ns (quote %s)) (find-ns 'user))"
+          "      prefix %S"
+          "      cands (->> (keys (ns-map ns))"
+          "                 (map str)"
+          "                 (filter #(.startsWith ^String %% prefix))"
+          "                 distinct"
+          "                 sort)]"
+          "  (apply str (interpose \"\\n\" cands)))")
+  "Format string for the completion query.
+The first %s is replaced with the buffer's namespace; %S is
+replaced with the typed prefix as a Clojure string literal.  The
+form must return a newline-joined string of candidate names.
+
+For richer completion (locals, classes, keywords, java methods)
+swap the default for a Compliment-based variant that requires
+`compliment.core' and calls `compliment.core/completions' with
+the prefix and the buffer ns.  Compliment is on the classpath of
+any project pulling in `cider-nrepl' transitively."
+  :type 'string :group 'port)
+
 (defun port-completion--query (prefix ns)
-  "Build the Clojure form that lists symbols in NS starting with PREFIX."
-  (format
-   (concat "(let [ns (or (find-ns (quote %s)) (find-ns 'user))"
-           "      prefix %S"
-           "      cands (->> (keys (ns-map ns))"
-           "                 (map str)"
-           "                 (filter #(.startsWith ^String %% prefix))"
-           "                 distinct"
-           "                 sort)]"
-           "  (apply str (interpose \"\\n\" cands)))")
-   ns prefix))
+  "Build the Clojure form that lists symbols in NS starting with PREFIX.
+Uses `port-completion-form'; the first placeholder is NS, the
+second PREFIX."
+  (format port-completion-form ns prefix))
 
 (defun port-completion--candidates (prefix)
   "Return a list of candidates matching PREFIX, or nil."

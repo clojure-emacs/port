@@ -2,6 +2,16 @@
 
 ## 0.2.0-snapshot (unreleased)
 
+- Every Clojure form Port sends to the prepl is now held in a
+  `defcustom` — `port-doc-form`, `port-source-form`,
+  `port-apropos-form`, `port-macroexpand-1-form`,
+  `port-macroexpand-all-form`, `port-load-file-form`,
+  `port-set-ns-form`, `port-eldoc-form`, `port-completion-form`,
+  and `port-xref-form`.  Each defaults to a JVM `clojure.repl/*`-style
+  form; override to target a different dialect (ClojureScript's
+  `cljs.repl/*`, a Compliment-based completion variant, etc.) without
+  having to fork Port.
+
 ## 0.1.0 (2026-05-11)
 
 Initial release.

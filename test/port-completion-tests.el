@@ -20,7 +20,12 @@
 
   (it "escapes quotes inside the prefix"
     (let ((q (port-completion--query "a\"b" "user")))
-      (expect q :to-match "prefix \"a\\\\\"b\""))))
+      (expect q :to-match "prefix \"a\\\\\"b\"")))
+
+  (it "honours overrides of `port-completion-form'"
+    (let ((port-completion-form "(my-dialect/complete '%s %S)"))
+      (expect (port-completion--query "ma" "user")
+              :to-equal "(my-dialect/complete 'user \"ma\")"))))
 
 (describe "port-tooling-decode-val with a newline-joined list"
   (it "returns the unwrapped multi-line string"

@@ -167,6 +167,53 @@ then attach from Emacs with `M-x port-connect` (defaults to `localhost:5555`).
 All output, including evaluation results from source buffers, ends up in the
 REPL buffer.
 
+## Dialect support
+
+Port's helper commands send plain Clojure forms over prepl, so any dialect
+that exposes a `clojure.core.server`-style prepl will work. The realistic
+candidates today:
+
+| Dialect              | Status       | Notes                                            |
+|----------------------|--------------|--------------------------------------------------|
+| Clojure (JVM)        | Supported    | Default. All forms target `clojure.repl/*`.       |
+| [Babashka][]         | Supported    | Drop-in. `source` on built-ins needs bb ≥ 1.12.216. |
+| [ClojureCLR][]       | Supported    | 1:1 port of `clojure.core.server`.                |
+| [ClojureScript][cljs] | Experimental | `cljs.core.server/io-prepl` exists, but the ecosystem is on piggieback+nREPL. Use the override defcustoms. |
+
+Other dialects (basilisp, jank, Planck, nbb) don't ship prepl; their
+supported editor path is nREPL.
+
+Every Clojure form Port sends is held in a `defcustom`, so you can override
+it for a dialect, a different introspection library, or your own
+preferences. The full list:
+
+| Defcustom                  | Sent by                       |
+|----------------------------|-------------------------------|
+| `port-doc-form`            | `port-doc`                    |
+| `port-source-form`         | `port-source`                 |
+| `port-apropos-form`        | `port-apropos`                |
+| `port-macroexpand-1-form`  | `port-macroexpand-1`          |
+| `port-macroexpand-all-form`| `port-macroexpand`            |
+| `port-load-file-form`      | `port-load-file`              |
+| `port-set-ns-form`         | `port-set-ns`                 |
+| `port-eldoc-form`          | eldoc-at-point                |
+| `port-completion-form`     | `completion-at-point`         |
+| `port-xref-form`           | `port-find-definition` (`M-.`) |
+
+For example, to point `port-doc` at ClojureScript:
+
+```elisp
+(setq port-doc-form    "(with-out-str (cljs.repl/doc %s))"
+      port-source-form "(with-out-str (cljs.repl/source %s))")
+```
+
+Each defcustom's docstring documents what its `%s` / `%S` placeholders
+resolve to.
+
+[Babashka]: https://babashka.org
+[ClojureCLR]: https://github.com/clojure/clojure-clr
+[cljs]: https://clojurescript.org
+
 ## Architecture
 
 prepl has no built-in request id, so any tooling that needs to know which

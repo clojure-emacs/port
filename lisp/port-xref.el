@@ -21,31 +21,37 @@
 (require 'port-tooling)
 (require 'xref)
 
+(defcustom port-xref-form
+  (concat "(when-let [ns (or (find-ns (quote %s)) (find-ns 'user))]"
+          "  (when-let [v (try (ns-resolve ns (quote %s))"
+          "                    (catch Throwable _ nil))]"
+          "    (let [m (meta v)"
+          "          file (:file m)"
+          "          url  (try (some-> file (clojure.java.io/resource))"
+          "                    (catch Throwable _ nil))"
+          "          jar? (and url (.startsWith (str url) \"jar:\"))]"
+          "      {:name (str (symbol v))"
+          "       :file file"
+          "       :line (:line m)"
+          "       :column (:column m)"
+          "       :url (some-> url str)"
+          "       :contents (when jar?"
+          "                   (try (slurp url)"
+          "                        (catch Throwable _ nil)))})))")
+  "Format string for the find-definition query.
+The first %s is replaced with the user-socket namespace, the
+second with the symbol being looked up.  The form must return a
+map with `:name', `:file', `:line', `:column', `:url', and
+optionally `:contents' (slurped source when the file lives inside
+a jar URL).  The default relies on `clojure.java.io/resource' and
+on `slurp', both JVM-only — non-JVM dialects need a rewrite that
+omits the jar branch."
+  :type 'string :group 'port)
+
 (defun port-xref--query (sym ns)
   "Build the Clojure form returning SYM's source location in NS.
-The map carries `:file' / `:line' from var metadata, plus `:url'
-\(the result of `clojure.java.io/resource' for the file) and
-`:contents' \(the slurped string when the URL is a jar URL).  The
-URL / contents pair is what makes \\[port-find-definition] work for
-vars whose source lives inside a jar."
-  (format
-   (concat "(when-let [ns (or (find-ns (quote %s)) (find-ns 'user))]"
-           "  (when-let [v (try (ns-resolve ns (quote %s))"
-           "                    (catch Throwable _ nil))]"
-           "    (let [m (meta v)"
-           "          file (:file m)"
-           "          url  (try (some-> file (clojure.java.io/resource))"
-           "                    (catch Throwable _ nil))"
-           "          jar? (and url (.startsWith (str url) \"jar:\"))]"
-           "      {:name (str (symbol v))"
-           "       :file file"
-           "       :line (:line m)"
-           "       :column (:column m)"
-           "       :url (some-> url str)"
-           "       :contents (when jar?"
-           "                   (try (slurp url)"
-           "                        (catch Throwable _ nil)))})))")
-   ns sym))
+Uses `port-xref-form'; the first placeholder is NS, the second SYM."
+  (format port-xref-form ns sym))
 
 ;;;###autoload
 (defun port-find-definition (sym)

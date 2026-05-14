@@ -49,7 +49,12 @@
   (it "substitutes the namespace and symbol"
     (let ((q (port-eldoc--query "foo" "my.ns")))
       (expect q :to-match "find-ns (quote my.ns)")
-      (expect q :to-match "ns-resolve ns (quote foo)"))))
+      (expect q :to-match "ns-resolve ns (quote foo)")))
+
+  (it "honours overrides of `port-eldoc-form'"
+    (let ((port-eldoc-form "(my-dialect/arglists '%s '%s)"))
+      (expect (port-eldoc--query "foo" "my.ns")
+              :to-equal "(my-dialect/arglists 'my.ns 'foo)"))))
 
 (provide 'port-eldoc-tests)
 

@@ -26,6 +26,50 @@
 (require 'port-stacktrace)
 (require 'port-xref)
 
+(defcustom port-doc-form "(with-out-str (clojure.repl/doc %s))"
+  "Format string for the `port-doc' query.
+%s is replaced with the symbol whose documentation is being looked
+up.  The result is the printed `clojure.repl/doc' output, captured
+via `with-out-str' and emitted into the REPL.  Override this to
+target a different namespace on a dialect that exposes doc
+differently (for example ClojureScript's `cljs.repl/doc')."
+  :type 'string :group 'port)
+
+(defcustom port-source-form "(with-out-str (clojure.repl/source %s))"
+  "Format string for the `port-source' query.
+%s is replaced with the symbol whose source is being shown.  See
+`port-doc-form' for the override rationale."
+  :type 'string :group 'port)
+
+(defcustom port-apropos-form "(clojure.repl/apropos %S)"
+  "Format string for the `port-apropos' query.
+%S is replaced with the search pattern as a Clojure string literal
+\(the Elisp string is escaped for embedding via the `%S' specifier)."
+  :type 'string :group 'port)
+
+(defcustom port-macroexpand-1-form "(macroexpand-1 (quote %s))"
+  "Format string for the `port-macroexpand-1' query.
+%s is replaced with the form at point (verbatim).  The outer
+`quote' prevents the prepl from evaluating it before macroexpand
+sees it."
+  :type 'string :group 'port)
+
+(defcustom port-macroexpand-all-form
+  "(clojure.walk/macroexpand-all (quote %s))"
+  "Format string for the `port-macroexpand' query.
+See `port-macroexpand-1-form' for the placeholder semantics."
+  :type 'string :group 'port)
+
+(defcustom port-load-file-form "(clojure.core/load-file %S)"
+  "Format string for the `port-load-file' command.
+%S is replaced with the file path as a Clojure string literal."
+  :type 'string :group 'port)
+
+(defcustom port-set-ns-form "(in-ns '%s)"
+  "Format string for the `port-set-ns' command.
+%s is replaced with the target namespace name."
+  :type 'string :group 'port)
+
 (defun port--read-symbol (prompt)
   "Prompt with PROMPT for a Clojure symbol, defaulting to the one at point."
   (let ((default (port-symbol-at-point)))
@@ -62,7 +106,7 @@ the output."
   (interactive (list (port--read-symbol "Doc")))
   (port-tooling-call
    (port-current-session)
-   (format "(with-out-str (clojure.repl/doc %s))" sym)
+   (format port-doc-form sym)
    (lambda (result) (port--tool-emit (format "doc %s" sym) result))))
 
 ;;;###autoload
@@ -71,7 +115,7 @@ the output."
   (interactive (list (port--read-symbol "Source")))
   (port-tooling-call
    (port-current-session)
-   (format "(with-out-str (clojure.repl/source %s))" sym)
+   (format port-source-form sym)
    (lambda (result) (port--tool-emit (format "source %s" sym) result))))
 
 ;;;###autoload
@@ -80,20 +124,20 @@ the output."
   (interactive (list (read-string "Apropos pattern: ")))
   (port-tooling-call
    (port-current-session)
-   (format "(clojure.repl/apropos %S)" pattern)
+   (format port-apropos-form pattern)
    (lambda (result) (port--tool-emit (format "apropos %s" pattern) result))))
 
 ;;;###autoload
 (defun port-macroexpand-1 ()
   "Macroexpand the form at point once via the tool socket."
   (interactive)
-  (port--macroexpand "(macroexpand-1 (quote %s))" "macroexpand-1"))
+  (port--macroexpand port-macroexpand-1-form "macroexpand-1"))
 
 ;;;###autoload
 (defun port-macroexpand ()
   "Fully macroexpand the form at point via the tool socket."
   (interactive)
-  (port--macroexpand "(clojure.walk/macroexpand-all (quote %s))" "macroexpand"))
+  (port--macroexpand port-macroexpand-all-form "macroexpand"))
 
 (defun port--macroexpand (form-template label)
   "Send the sexp at point through FORM-TEMPLATE and emit under LABEL."
@@ -115,7 +159,7 @@ on the REPL session (defines vars, switches namespace)."
                          (and buffer-file-name buffer-file-name) t)))
   (when (buffer-modified-p) (save-buffer))
   (port-repl-emit-comment (format "load-file %s" file))
-  (port-eval-string (format "(clojure.core/load-file %S)" file)))
+  (port-eval-string (format port-load-file-form file)))
 
 ;;;###autoload
 (defun port-set-ns (ns)
@@ -128,7 +172,7 @@ where the namespace actually persists."
    (list (read-string "Namespace: "
                       (or (port-current-buffer-ns) "user"))))
   (port-eval--send-via-repl (port-current-session)
-                            (format "(in-ns '%s)" ns)))
+                            (format port-set-ns-form ns)))
 
 ;;;###autoload
 (defun port-switch-to-repl ()

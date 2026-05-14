@@ -20,6 +20,22 @@
 (require 'port-session)
 (require 'port-tooling)
 
+(defcustom port-eldoc-form
+  (concat "(when-let [ns (or (find-ns (quote %s)) (find-ns 'user))]"
+          " (when-let [v (try (ns-resolve ns (quote %s))"
+          "                   (catch Throwable _ nil))]"
+          "  (let [m (meta v)]"
+          "   (when-let [a (:arglists m)]"
+          "    (str (symbol v) \": \" a)))))")
+  "Format string for the eldoc query.
+The first %s is replaced with the user-socket namespace; the
+second with the symbol whose arglists are being looked up.  The
+form must return either a string (rendered by eldoc) or nil.
+Override to target a dialect whose introspection lives elsewhere
+\(for example, switching `Throwable' to a dialect-appropriate
+catch-all class)."
+  :type 'string :group 'port)
+
 (defun port-eldoc--target ()
   "Return the head symbol of the enclosing list form at point, as a string.
 Returns nil if point is not inside a list, or there is no symbol there."
@@ -37,15 +53,10 @@ Returns nil if point is not inside a list, or there is no symbol there."
     "user"))
 
 (defun port-eldoc--query (sym ns)
-  "Build the Clojure form that resolves SYM in NS and return its arglists string."
-  (format
-   (concat "(when-let [ns (or (find-ns (quote %s)) (find-ns 'user))]"
-           " (when-let [v (try (ns-resolve ns (quote %s))"
-           "                   (catch Throwable _ nil))]"
-           "  (let [m (meta v)]"
-           "   (when-let [a (:arglists m)]"
-           "    (str (symbol v) \": \" a)))))")
-   ns sym))
+  "Build the Clojure form that resolves SYM in NS and return its arglists string.
+Uses `port-eldoc-form' as the template; the first placeholder is
+the namespace, the second the symbol."
+  (format port-eldoc-form ns sym))
 
 ;;;###autoload
 (defun port-eldoc-function (callback &rest _ignored)
