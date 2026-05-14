@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.2.0-snapshot (unreleased)
+## 0.3.0-snapshot (unreleased)
+
+## 0.2.0 (2026-05-14)
 
 - Optional inline result overlays.  Set `port-eval-overlay' to
   `t' and each interactive eval (`C-c C-e' on a sexp, `C-c C-c'
