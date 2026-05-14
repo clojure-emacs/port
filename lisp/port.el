@@ -48,6 +48,7 @@
 (require 'port-completion)
 (require 'port-tap)
 (require 'port-xref)
+(require 'port-orchard)
 (require 'port-jack-in)
 (require 'port-mode)
 
@@ -70,6 +71,14 @@
   :type 'integer
   :group 'port)
 
+(defvar port-after-connect-hook nil
+  "Hook run after `port-connect' establishes a session.
+The session is in `port-default-session' and the tool-socket
+bootstrap has been sent; functions on this hook can issue
+`port-tooling-call' requests right away.  Used by
+`port-orchard.el' to optionally auto-enable Orchard / Compliment
+when `port-enable-orchard-on-connect' is non-nil.")
+
 ;;;###autoload
 (defun port-connect (host port)
   "Connect to a running prepl server at HOST:PORT.
@@ -90,6 +99,7 @@ correlated helper-command requests, then pops to the REPL buffer."
     (port-tooling-install session)
     (pop-to-buffer buf)
     (message "Port connected to %s:%d (user + tool sockets)" host port)
+    (run-hooks 'port-after-connect-hook)
     session))
 
 ;;;###autoload

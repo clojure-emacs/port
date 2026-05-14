@@ -231,6 +231,145 @@ resolve to.
 [ClojureCLR]: https://github.com/clojure/clojure-clr
 [cljs]: https://clojurescript.org
 
+## Better completion
+
+Port's default `completion-at-point` is a plain `ns-map` walk: it sees
+vars visible in the buffer's namespace and nothing else. For locals,
+classes, keywords, Java methods, and the rest, two paths are worth
+knowing about.
+
+**Recommended: clojure-lsp.** Add `clojure-lsp` to your editor setup
+(via [`eglot`](https://www.gnu.org/software/emacs/manual/html_mono/eglot.html)
+or [`lsp-mode`](https://emacs-lsp.github.io/lsp-mode/)) and let it own
+completion. clojure-lsp does static analysis on the project, so it
+works without a running prepl and gives much richer candidates than
+anything Port can scrape at runtime. This is the path most Port users
+should take.
+
+**Alternative: Compliment-on-the-classpath.** If your project pulls in
+[Compliment](https://github.com/alexander-yakushev/compliment) (any
+project that depends on `cider-nrepl` transitively does), you can swap
+Port's completion form to call it:
+
+```elisp
+(require 'port-orchard)
+(setq port-completion-form port-compliment-completion-form)
+```
+
+or interactively via `M-x port-enable-orchard` (see below).
+
+## Richer introspection via Orchard
+
+[Orchard](https://github.com/clojure-emacs/orchard) is the Clojure
+introspection library CIDER uses for doc / info lookup, eldoc, find-
+definition, and apropos. When Orchard is on the running JVM's
+classpath, Port can route its helper commands through `orchard.info`
+and friends for noticeably better results: Java member info,
+namespace-alias resolution, ClojureDocs `See also`, and jar / Java-
+source file location handling that the default `clojure.repl/*` forms
+don't get.
+
+### Step 1: get Orchard and Compliment onto the classpath
+
+Orchard and Compliment aren't part of Clojure proper, so you need to
+pull them in.  Three options, increasing in convenience:
+
+**Easiest: let `M-x port` inject them.**  Set:
+
+```elisp
+(setq port-jack-in-extra-deps port-jack-in-orchard-deps)
+```
+
+and `M-x port` (alias `M-x port-jack-in`) splices `-Sdeps '{...}'`
+into the tools-deps invocation, or chained
+`update-in :dependencies conj` calls into the Leiningen one.  No
+project-side changes needed.  This is the fastest path if you don't
+care about the rest of your team — the deps only exist in the JVM
+Port spawned, not in your `deps.edn` / `project.clj`.
+
+The other two paths add the deps to the project, which is useful if
+you want them available outside Port too, or if you're already
+running a prepl externally and using `M-x port-connect`.
+
+**deps.edn alias** (committed; visible to teammates):
+
+```elisp
+;; project's deps.edn
+
+```clojure
+{:aliases
+ {:port-tools {:extra-deps {cider/orchard         {:mvn/version "0.41.0"}
+                            compliment/compliment {:mvn/version "0.8.0"}}}}}
+```
+
+Then start the prepl with the alias active:
+
+```
+clojure -A:port-tools \
+  -X clojure.core.server/start-server \
+  :name '"port"' :port 5555 \
+  :accept clojure.core.server/io-prepl
+```
+
+and `M-x port-connect`.
+
+**Leiningen** (`project.clj`):
+
+```clojure
+:profiles
+{:port-tools {:dependencies [[cider/orchard         "0.41.0"]
+                             [compliment/compliment "0.8.0"]]}}
+```
+
+Then:
+
+```
+lein with-profile +port-tools trampoline run -m clojure.main -e \
+  "(do (clojure.core.server/start-server {:name \"port\" :port 5555 :accept (quote clojure.core.server/io-prepl)}) @(promise))"
+```
+
+and `M-x port-connect`.
+
+Port's `M-x port` jack-in doesn't yet read custom aliases / profiles
+out of the box (it's on the roadmap).  If you've put the deps in an
+alias rather than using `port-jack-in-extra-deps`, you can either
+start the prepl externally as above, or invoke `M-x port` with a
+prefix argument (`C-u M-x port`) to edit the spawned command and add
+`-A:port-tools` / `with-profile +port-tools` by hand.
+
+### Step 2: enable the Orchard-flavored forms
+
+**Interactive:** with a Port session live, run `M-x port-enable-orchard`.
+It probes the tool socket for `orchard.info` and `compliment.core`,
+then swaps the relevant `port-*-form` defcustoms for the available
+half.  Probes are independent: if you have Orchard but not Compliment
+(or vice versa) you'll get whichever is loadable.
+
+**Auto on every connect:** set `port-enable-orchard-on-connect` and
+the probe + swap fires after each `M-x port` / `M-x port-connect`
+automatically.  Pairs naturally with `port-jack-in-extra-deps`:
+
+```elisp
+(setq port-jack-in-extra-deps          port-jack-in-orchard-deps
+      port-enable-orchard-on-connect   t)
+```
+
+**Per-form persistent:** if you'd rather hard-wire the form templates
+in your init (no probe, no dependency on `port-after-connect-hook`):
+
+```elisp
+(require 'port-orchard)
+(setq port-doc-form        port-orchard-doc-form
+      port-eldoc-form      port-orchard-eldoc-form
+      port-apropos-form    port-orchard-apropos-form
+      port-xref-form       port-orchard-xref-form
+      port-completion-form port-compliment-completion-form)
+```
+
+Orchard is JVM-only — it won't load on Babashka or ClojureCLR.  The
+probe-based interactive command degrades gracefully there (it just
+reports nothing was enabled).
+
 ## Architecture
 
 prepl has no built-in request id, so any tooling that needs to know which

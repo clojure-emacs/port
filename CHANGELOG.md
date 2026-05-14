@@ -2,6 +2,23 @@
 
 ## 0.2.0-snapshot (unreleased)
 
+- Optional [Orchard](https://github.com/clojure-emacs/orchard) and
+  [Compliment](https://github.com/alexander-yakushev/compliment)
+  integration via `port-orchard.el`.  `M-x port-enable-orchard' probes
+  the running prepl for `orchard.info' and `compliment.core' and swaps
+  in richer form templates for doc, eldoc, apropos, find-definition,
+  and completion — independently per library.  Or `setq' the
+  `port-orchard-*' / `port-compliment-*' defconsts persistently in
+  your init.
+- `port-enable-orchard-on-connect` defcustom: when non-nil,
+  `port-enable-orchard' runs automatically after every successful
+  jack-in / `port-connect'.  Paired with `port-jack-in-extra-deps' it
+  gets Orchard from "opt-in" to "always on" in two settings lines.
+- `port-after-connect-hook`: a hook run at the end of `port-connect'
+  once the tool-socket bootstrap has been installed.  Used internally
+  by `port-orchard.el' for the auto-enable wiring; available for any
+  user-side extension that needs to fire helper-command requests
+  immediately after connect.
 - Dedicated `*port-taps*` history buffer for values published via
   `tap>`.  Each tap is appended with a timestamp header and rendered
   in `clojure-mode` (or `clojure-ts-mode`) for syntax highlighting.
