@@ -131,19 +131,20 @@ For a manual checkout (e.g. while contributing):
 ## Starting a prepl
 
 Easiest path: let Port spawn one for you. Visit a file in your project and
-run `M-x port`. It auto-detects the project layout (`deps.edn`, `project.clj`,
-or `bb.edn`), picks a free port in `5555-5574`, starts a JVM with a prepl
-server, and connects when the port comes up. The server's stdout/stderr
-lands in a `*port-server*` buffer below the REPL.
+run `M-x port` (or its alias `M-x port-jack-in`). It auto-detects the project
+layout (`deps.edn`, `project.clj`, or `bb.edn`), picks a free port in
+`5555-5574`, starts a JVM with a prepl server, and connects when the port
+comes up. The server's stdout/stderr lands in a `*port-server*` buffer below
+the REPL.
 
 If you'd rather run the prepl yourself (handy for embedding it in a
 long-running application or pre-warming the JVM), start it like this:
 
 ```
-clojure -e '(do (clojure.core.server/start-server
-                  {:name "port" :port 5555
-                   :accept (quote clojure.core.server/io-prepl)})
-                @(promise))'
+clojure -M -e '(do (clojure.core.server/start-server
+                     {:name "port" :port 5555
+                      :accept (quote clojure.core.server/io-prepl)})
+                   @(promise))'
 ```
 
 then attach from Emacs with `M-x port-connect` (defaults to `localhost:5555`).

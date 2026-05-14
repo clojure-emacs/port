@@ -2,6 +2,22 @@
 
 ## 0.2.0-snapshot (unreleased)
 
+- `port-jack-in-extra-deps` defcustom: alist of `(DEP . VERSION)`
+  pairs that get spliced into the JVM start command at jack-in
+  (`clojure -Sdeps {...}` for tools-deps, chained
+  `lein update-in :dependencies conj` for Leiningen).  Combined with
+  the new `port-jack-in-orchard-deps' preset, opting into Orchard +
+  Compliment is now a one-liner:
+
+      (setq port-jack-in-extra-deps port-jack-in-orchard-deps)
+
+- `port-jack-in` is now an alias for `port' — discoverable under the
+  CIDER-style name for users with `cider-jack-in' muscle memory.
+- Jack-in now configures `io-prepl` with a `clojure.pprint`-based
+  `:valf` by default, so `:ret` and `:tap` values on the user socket
+  arrive pretty-printed (bounded by `port-print-length` /
+  `port-print-level`).  Set `port-jack-in-pretty-print` to nil for
+  the old single-line `pr-str` behaviour.
 - Every Clojure form Port sends to the prepl is now held in a
   `defcustom` — `port-doc-form`, `port-source-form`,
   `port-apropos-form`, `port-macroexpand-1-form`,
