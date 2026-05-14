@@ -30,6 +30,7 @@
 
 (require 'cl-lib)
 (require 'port-client)
+(require 'port-completion)
 (require 'port-session)
 (require 'port-tooling)
 (require 'xref)
@@ -185,11 +186,14 @@ Suitable for adding to `xref-backend-functions'."
   (port-symbol-at-point))
 
 (cl-defmethod xref-backend-identifier-completion-table ((_backend (eql 'port)))
-  "Return the completion table for `xref-find-definitions' prompting.
-Currently nil: we don't pre-enumerate symbols, so the user types
-freely.  Wiring this up against `port-completion-form' would be a
-follow-up if symbol listing turns out cheap enough on the prepl."
-  nil)
+  "Return the cached symbol list for the buffer's namespace, or nil.
+Powers tab-completion at the `M-x xref-find-definitions' prompt by
+reusing whatever `port-completion' has cached for the current
+namespace.  Returns nil when the cache is cold (the user can still
+type a symbol freely; xref doesn't require a completion table)."
+  (when port-default-session
+    (port-completion--cached-symbols
+     (port-session-current-ns port-default-session))))
 
 (cl-defmethod xref-backend-definitions ((_backend (eql 'port)) identifier)
   "Return a one-element list of `xref-item' for IDENTIFIER, or nil.

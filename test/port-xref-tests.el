@@ -162,6 +162,32 @@
       (expect (port-xref-backend) :to-be nil))))
 
 
+(describe "xref-backend-identifier-completion-table for backend 'port"
+
+  (before-each (clrhash port-completion--cache))
+  (after-each  (clrhash port-completion--cache))
+
+  (it "returns the cached symbol list for the current namespace"
+    (port-completion--store "my.ns" '("foo" "bar" "baz"))
+    (cl-letf (((symbol-function 'port-session-current-ns)
+               (lambda (_) "my.ns")))
+      (let ((port-default-session 'sentinel))
+        (expect (xref-backend-identifier-completion-table 'port)
+                :to-equal '("foo" "bar" "baz")))))
+
+  (it "returns nil when the cache is cold"
+    (cl-letf (((symbol-function 'port-session-current-ns)
+               (lambda (_) "no.cache")))
+      (let ((port-default-session 'sentinel))
+        (expect (xref-backend-identifier-completion-table 'port)
+                :to-be nil))))
+
+  (it "returns nil when no session is bound"
+    (let ((port-default-session nil))
+      (expect (xref-backend-identifier-completion-table 'port)
+              :to-be nil))))
+
+
 (describe "port-xref setup / teardown"
 
   (it "adds and removes the backend on `xref-backend-functions'"

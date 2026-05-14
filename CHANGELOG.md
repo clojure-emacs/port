@@ -2,6 +2,10 @@
 
 ## 0.2.0-snapshot (unreleased)
 
+- `xref-find-definitions` now offers tab-completion at its prompt,
+  drawing from the same per-namespace cache `completion-at-point'
+  uses.  Falls back to free-form input when the cache is cold so
+  the prompt always works.
 - `M-x port` jacks in to babashka projects (`bb.edn`).  The
   spawned command is `bb -e <server-form>`, identical to the
   tools-deps / Leiningen invocations modulo the program name and
