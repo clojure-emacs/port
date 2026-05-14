@@ -2,6 +2,16 @@
 
 ## 0.2.0-snapshot (unreleased)
 
+- Optional inline result overlays.  Set `port-eval-overlay' to
+  `t' and each interactive eval (`C-c C-e' on a sexp, `C-c C-c'
+  on a defun, etc.) places a `=> VALUE' overlay at the end of
+  the form, dismissed by the next command.  Composes with
+  `port-eval-display': you can keep your minibuffer / REPL
+  output and add the overlay on top.  Errors get the
+  `port-eval-overlay-error-face'; long values are truncated to
+  the first line (full text still lands in the REPL when
+  `port-eval-display' is `both').  Off by default, so the
+  existing minibuffer-or-REPL UX is unchanged.
 - `xref-find-definitions` now offers tab-completion at its prompt,
   drawing from the same per-namespace cache `completion-at-point'
   uses.  Falls back to free-form input when the cache is cold so

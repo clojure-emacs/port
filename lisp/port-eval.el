@@ -45,6 +45,58 @@ available (e.g. when only `clojure-ts-mode' is loaded)."
            "(ns[ \t\n]+\\([a-zA-Z0-9._/+!?<>=*$&%-]+\\)" nil t)
       (match-string-no-properties 1))))
 
+(defcustom port-eval-overlay nil
+  "When non-nil, also show eval results as inline overlays.
+The overlay appears at the end of the evaluated form (e.g. just
+after point for `port-eval-last-sexp'), prefixed by `=> ', and is
+dismissed by the next command.
+
+Composes with `port-eval-display': overlays are emitted in
+addition to whatever the display mode already does in the
+minibuffer or REPL.  Only effective when the eval flows through
+the tool socket (`port-eval-display' = `minibuffer' or `both' —
+the `repl' mode streams via the user socket and has no structured
+result to overlay)."
+  :type 'boolean :group 'port)
+
+(defface port-eval-overlay-face
+  '((t :inherit font-lock-comment-face :weight bold))
+  "Face for the inline result overlay shown when `port-eval-overlay' is on."
+  :group 'port)
+
+(defface port-eval-overlay-error-face
+  '((t :inherit error :weight bold))
+  "Face for the inline overlay when evaluation raised an exception."
+  :group 'port)
+
+(defvar port-eval--last-overlay nil
+  "The most recent inline result overlay, removed on the next command.")
+
+(defun port-eval--clear-overlay ()
+  "Remove the inline result overlay if any, and unregister the hook."
+  (when (overlayp port-eval--last-overlay)
+    (delete-overlay port-eval--last-overlay)
+    (setq port-eval--last-overlay nil))
+  (remove-hook 'pre-command-hook #'port-eval--clear-overlay))
+
+(defun port-eval--show-overlay (buf pos text face)
+  "Show TEXT as an after-string overlay at POS in BUF with FACE.
+Replaces any previous overlay; auto-clears on the next command
+via `pre-command-hook'."
+  (when (and (buffer-live-p buf)
+             (numberp pos))
+    (port-eval--clear-overlay)
+    (with-current-buffer buf
+      (let* ((short (port-eval--summary-line (or text "")))
+             (ov    (make-overlay pos pos buf t nil)))
+        (overlay-put ov 'after-string
+                     (propertize (concat " => " short)
+                                 'face face
+                                 'cursor t))
+        (overlay-put ov 'port-eval-overlay t)
+        (setq port-eval--last-overlay ov)
+        (add-hook 'pre-command-hook #'port-eval--clear-overlay)))))
+
 (defcustom port-eval-display 'minibuffer
   "Where to display the result of interactive evaluation commands.
 The commands `port-eval-last-sexp', `port-eval-defun-at-point',
@@ -74,10 +126,16 @@ Possible values:
                  (const :tag "Both" both))
   :group 'port)
 
-(defun port-eval-string (code)
-  "Evaluate CODE (a string) according to `port-eval-display'."
+(defun port-eval-string (code &optional target)
+  "Evaluate CODE (a string) according to `port-eval-display'.
+TARGET is an optional `(BUFFER . POSITION)' pair used by
+`port-eval-overlay' to anchor the inline result overlay; eval
+commands pass the end of the evaluated form."
   (let* ((session (port-current-session))
-         (display port-eval-display))
+         (display port-eval-display)
+         (overlay-target (and port-eval-overlay
+                              (not (eq display 'repl))
+                              target)))
     (cond
      ((eq display 'repl)
       (port-eval--send-via-repl session code))
@@ -85,8 +143,27 @@ Possible values:
       (let ((ns (port-eval--current-ns session)))
         (when (eq display 'both)
           (port-eval--echo-form session code))
-        (port-tooling-user-eval session ns code
-                                #'port-eval--display-result))))))
+        (port-tooling-user-eval
+         session ns code
+         (lambda (result)
+           (port-eval--display-result result)
+           (when overlay-target
+             (port-eval--overlay-result overlay-target result)))))))))
+
+(defun port-eval--overlay-result (target result)
+  "Show RESULT in an overlay at TARGET.
+TARGET is a `(BUFFER . POSITION)' pair.  Picks the right face for
+the success-vs-error path and falls back to the exception message
+when `:val' is missing."
+  (let* ((tag  (alist-get :tag result))
+         (val  (alist-get :val result))
+         (msg  (or (alist-get :ex-message result) (alist-get :ex result)))
+         (text (if (eq tag :err) msg val))
+         (face (if (eq tag :err)
+                   'port-eval-overlay-error-face
+                 'port-eval-overlay-face)))
+    (when text
+      (port-eval--show-overlay (car target) (cdr target) text face))))
 
 (defun port-eval--current-ns (session)
   "Best-effort namespace name (string) for SESSION's current buffer.
@@ -167,10 +244,12 @@ always echoed to the REPL via `:out' / `:err')."
 (defun port-eval-last-sexp ()
   "Send the sexp before point to the prepl."
   (interactive)
-  (port-eval-string
-   (buffer-substring-no-properties
-    (save-excursion (backward-sexp) (point))
-    (point))))
+  (let ((end (point)))
+    (port-eval-string
+     (buffer-substring-no-properties
+      (save-excursion (backward-sexp) (point))
+      end)
+     (cons (current-buffer) end))))
 
 ;;;###autoload
 (defun port-eval-defun-at-point ()
@@ -181,13 +260,15 @@ always echoed to the REPL via `:out' / `:err')."
     (let ((end (point)))
       (beginning-of-defun)
       (port-eval-string
-       (buffer-substring-no-properties (point) end)))))
+       (buffer-substring-no-properties (point) end)
+       (cons (current-buffer) end)))))
 
 ;;;###autoload
 (defun port-eval-region (start end)
   "Send the region between START and END to the prepl."
   (interactive "r")
-  (port-eval-string (buffer-substring-no-properties start end)))
+  (port-eval-string (buffer-substring-no-properties start end)
+                    (cons (current-buffer) end)))
 
 ;;;###autoload
 (defun port-eval-buffer ()

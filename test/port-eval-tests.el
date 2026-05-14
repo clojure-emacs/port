@@ -191,6 +191,69 @@
       (expect sent :to-match
               (regexp-quote "\"(println \\\"hi\\\")\"")))))
 
+(describe "port-eval result overlays"
+
+  (after-each (port-eval--clear-overlay))
+
+  (it "shows an after-string overlay at the target position"
+    (with-temp-buffer
+      (insert "(+ 1 2)")
+      (let ((buf (current-buffer))
+            (end (point)))
+        (port-eval--overlay-result
+         (cons buf end)
+         '((:tag . :ok) (:val . "3") (:out . "") (:err . "") (:ns . "user")))
+        (let ((ov port-eval--last-overlay))
+          (expect (overlayp ov) :to-be-truthy)
+          (expect (overlay-buffer ov) :to-be buf)
+          (expect (overlay-start ov) :to-equal end)
+          (expect (overlay-get ov 'after-string) :to-match "=> 3")))))
+
+  (it "uses the error face when the result is :tag :err"
+    (with-temp-buffer
+      (insert "(/ 1 0)")
+      (port-eval--overlay-result
+       (cons (current-buffer) (point))
+       '((:tag . :err) (:ex-message . "Divide by zero")))
+      (let* ((ov port-eval--last-overlay)
+             (after (and ov (overlay-get ov 'after-string))))
+        (expect after :to-match "Divide by zero")
+        (expect (get-text-property 1 'face after)
+                :to-be 'port-eval-overlay-error-face))))
+
+  (it "truncates multi-line values to the first line"
+    (with-temp-buffer
+      (insert "(range 10)")
+      (port-eval--overlay-result
+       (cons (current-buffer) (point))
+       '((:tag . :ok) (:val . "(0\n 1\n 2)")))
+      (let ((after (overlay-get port-eval--last-overlay 'after-string)))
+        (expect after :to-match "=> (0 …")
+        (expect after :not :to-match "\n"))))
+
+  (it "replaces a prior overlay rather than stacking"
+    (with-temp-buffer
+      (insert "(+ 1 2)")
+      (let ((target (cons (current-buffer) (point))))
+        (port-eval--overlay-result
+         target '((:tag . :ok) (:val . "3")))
+        (let ((first port-eval--last-overlay))
+          (port-eval--overlay-result
+           target '((:tag . :ok) (:val . "4")))
+          (expect port-eval--last-overlay :not :to-be first)
+          (expect (overlay-buffer first) :to-be nil)))))
+
+  (it "is cleared by `port-eval--clear-overlay'"
+    (with-temp-buffer
+      (insert "(+ 1 2)")
+      (port-eval--overlay-result
+       (cons (current-buffer) (point))
+       '((:tag . :ok) (:val . "3")))
+      (port-eval--clear-overlay)
+      (expect port-eval--last-overlay :to-be nil)
+      (expect (memq #'port-eval--clear-overlay pre-command-hook)
+              :to-be nil))))
+
 (describe "port-eval--summary-line"
 
   (it "passes single-line values through unchanged"

@@ -15,6 +15,7 @@ spirit of [CIDER](https://github.com/clojure-emacs/cider) and
 - Single-buffer REPL with persistent input history.
 - Interactive evaluation from source buffers (`C-c C-e`, `C-c C-c`, ...),
   pretty-printed via `clojure.pprint` with configurable length/level caps.
+  Optional inline result overlays (`port-eval-overlay`).
 - Structured stacktrace buffer for exceptions: cause chain, ex-data,
   navigable frames (including jar-only ones, resolved on the JVM).
 - Eldoc, completion-at-point, doc/source/apropos/macroexpand helpers,
