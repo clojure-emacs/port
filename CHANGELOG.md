@@ -2,6 +2,19 @@
 
 ## 0.2.0-snapshot (unreleased)
 
+- `clojure.test` runner with a structured report buffer.  Four
+  commands under `C-c C-t`: `t` runs the deftest at point, `n` the
+  current namespace, `p` every loaded test-bearing namespace, and
+  `r` re-runs whatever failed or errored last.  Results land in
+  `*port-test-report*` with per-failure sections showing
+  expected/actual and a `file:line` link to the source; `RET` on a
+  link jumps, `n`/`p` walk failures, `g` re-runs the same
+  selection.  Errors carry the captured `Throwable->map`, so `RET`
+  on `(RET to show stacktrace)` pops the existing structured
+  stacktrace buffer.  The Clojure-side machinery is held in
+  `port-test-bootstrap-form`; the four entry-point templates are
+  individual defcustoms (`port-test-run-ns-form` etc.) for dialect
+  or library overrides.
 - Optional [Orchard](https://github.com/clojure-emacs/orchard) and
   [Compliment](https://github.com/alexander-yakushev/compliment)
   integration via `port-orchard.el`.  `M-x port-enable-orchard' probes

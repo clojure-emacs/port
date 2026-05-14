@@ -21,6 +21,10 @@ spirit of [CIDER](https://github.com/clojure-emacs/cider) and
   and `M-.` find-definition that follows into jar sources.
 - Dedicated `*port-taps*` buffer that accumulates values published via
   `tap>`, with `C-c C-t v` to view and `C-c C-t c` to clear.
+- `clojure.test` runner with a structured `*port-test-report*` buffer:
+  navigable per-failure entries, `RET` to jump to the source or pop
+  a stacktrace, and `port-test-rerun-failed` to retry only what
+  broke.
 
 ## Why prepl?
 
@@ -167,6 +171,10 @@ then attach from Emacs with `M-x port-connect` (defaults to `localhost:5555`).
 | `C-c C-z` | `port-switch-to-repl`         |
 | `C-c C-t v` | `port-show-taps`            |
 | `C-c C-t c` | `port-clear-taps`           |
+| `C-c C-t t` | `port-test-run-at-point`    |
+| `C-c C-t n` | `port-test-run-ns`          |
+| `C-c C-t p` | `port-test-run-project`     |
+| `C-c C-t r` | `port-test-rerun-failed`    |
 | `M-.`     | `port-find-definition`        |
 
 All output, including evaluation results from source buffers, ends up in the
@@ -183,6 +191,31 @@ buffer and `C-c C-t c` to clear it. The buffer is capped at
 When Port jacks in the JVM itself, it configures `io-prepl` with a
 `clojure.pprint`-based `:valf`, so `:ret` and `:tap` values arrive
 pretty-printed already. Set `port-jack-in-pretty-print` to nil to opt out.
+
+## Running tests
+
+Port can drive `clojure.test` over the tool socket and render the
+results in a `*port-test-report*` buffer. The four entry points:
+
+| Binding     | Command                     | What it runs                       |
+|-------------|-----------------------------|------------------------------------|
+| `C-c C-t t` | `port-test-run-at-point`    | The `deftest` enclosing point      |
+| `C-c C-t n` | `port-test-run-ns`          | Every `deftest` in the current ns  |
+| `C-c C-t p` | `port-test-run-project`     | Every loaded test-bearing namespace |
+| `C-c C-t r` | `port-test-rerun-failed`    | Only the vars that failed last run |
+
+The report buffer shows a one-line summary, then a section per
+failure/error with `expected:`, `actual:`, and a `file:line` link.
+`RET` on a link jumps to the source; on an error's `(RET to show
+stacktrace)` line it pops Port's existing structured stacktrace
+buffer for the captured `Throwable->map`. `n`/`p` walks failures,
+`g` re-runs the same selection, `q` buries the buffer.
+
+The Clojure-side machinery is installed lazily on first use and lives
+in `port-test-bootstrap-form`. Each entry point is also exposed as a
+defcustom (`port-test-run-ns-form`, `port-test-run-var-form`,
+`port-test-run-all-form`, `port-test-rerun-failed-form`) for dialect
+or test-runner overrides.
 
 ## Dialect support
 
@@ -216,6 +249,10 @@ preferences. The full list:
 | `port-eldoc-form`          | eldoc-at-point                |
 | `port-completion-form`     | `completion-at-point`         |
 | `port-xref-form`           | `port-find-definition` (`M-.`) |
+| `port-test-run-ns-form`    | `port-test-run-ns`            |
+| `port-test-run-var-form`   | `port-test-run-at-point`      |
+| `port-test-run-all-form`   | `port-test-run-project`       |
+| `port-test-rerun-failed-form` | `port-test-rerun-failed`   |
 
 For example, to point `port-doc` at ClojureScript:
 

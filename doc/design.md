@@ -170,6 +170,7 @@ lisp/
 ├── port-completion.el   sync ns-map walk for completion-at-point
 ├── port-stacktrace.el   parsed Throwable->map renderer + frame navigation
 ├── port-tap.el          *port-taps* history buffer for tap> values
+├── port-test.el         clojure.test runner + *port-test-report* buffer
 └── port-xref.el         var meta -> file:line for find-definition (M-.)
 ```
 
@@ -383,6 +384,40 @@ default; the user can flip `port-stacktrace-hide-clojure-internals`
 to see everything.  `RET` on a frame attempts to visit its source,
 trying `default-directory` and a few common project source roots.
 
+### `port-test.el`
+
+The `clojure.test` runner.  A single bootstrap form
+(`port-test-bootstrap-form`) defines a `port.test` namespace on the
+tool socket with four entry points: `-run-ns`, `-run-var`, `-run-all`,
+`-rerun-failed`.  Each wraps the actual `clojure.test` call in
+`with-redefs` on `clojure.test/report` to capture per-assertion events
+into an atom while still chaining to the original report (so
+`inc-report-counter!` and friends still fire and `:summary` carries
+accurate counts).  The result map shape is
+`{:summary {:test N :pass N :fail N :error N} :results [...]}`, where
+each entry in `:results` is a printed map carrying `:type`, `:ns`,
+`:var`, `:file`, `:line`, `:expected`, `:actual`, plus `:ex` and
+`:ex-message` on errors so a stacktrace can be popped on demand.
+
+The bootstrap is sent lazily — the first test command installs it,
+subsequent commands send only the entry-point call.  Sessions that
+already received it are tracked in `port-test--installed-sessions`.
+
+Rendering lives in `port-test--render`, which writes into a
+`special-mode`-derived `port-test-report-mode` buffer with text
+properties on each failure section: `port-test-jump-target` carries
+the `(file . line)` pair, `port-test-stacktrace` carries the printed
+`Throwable->map`, and `port-test-failure` marks the whole entry for
+`n` / `p` navigation.  Source resolution reuses
+`port-stacktrace--locate-relative` so classpath-relative file paths
+resolve against `default-directory` and common project source roots,
+same as the stacktrace buffer.
+
+The four entry-point templates are individual defcustoms
+(`port-test-run-ns-form` etc.), so swapping in a different test
+runner (kaocha, eftest) or a ClojureScript-flavored equivalent is a
+matter of setting the corresponding format string.
+
 ### `port-tap.el`
 
 A dedicated `*port-taps*` history buffer that accumulates values
@@ -490,23 +525,15 @@ architecture.
 
 In rough priority order:
 
-1. Test runner integration (`clojure.test`).
-2. xref backend: replace the standalone `port-find-definition`
+1. xref backend: replace the standalone `port-find-definition`
    command with an `xref-backend-functions` implementation, which
    gets us references and apropos UI for free.
-3. Jack-in for babashka and shadow-cljs, plus per-project alias
-   selection.
-4. Multi-session support keyed per clojure-mode buffer.
-5. Trace-frame source resolution via the tool socket (round-trip
+2. Trace-frame source resolution via the tool socket (round-trip
    to `clojure.java.io/resource` per frame), so jar-only frames
    become navigable too.
-6. Pretty-printing on the user socket (REPL-typed input).  The
-   tool-socket eval path already pretty-prints, but vanilla
-   io-prepl on the user socket prints with `pr-str`.  Fixing this
-   needs either a custom `:valf` at server-start (which we control
-   in jack-in but not in `port-connect`) or post-processing in the
-   client.
-7. CIDER-style result overlays (deliberately listed last; the
+3. Jack-in for shadow-cljs, plus per-project alias selection.
+4. Multi-session support keyed per clojure-mode buffer.
+5. CIDER-style result overlays (deliberately listed last; the
    "all output goes to the REPL" UX is a deliberate choice).
 
 ## Versioning

@@ -47,6 +47,7 @@
 (require 'port-eldoc)
 (require 'port-completion)
 (require 'port-tap)
+(require 'port-test)
 (require 'port-xref)
 (require 'port-orchard)
 (require 'port-jack-in)
