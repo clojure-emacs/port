@@ -203,9 +203,12 @@ where the namespace actually persists."
     (define-key map (kbd "C-c C-t n") #'port-test-run-ns)
     (define-key map (kbd "C-c C-t p") #'port-test-run-project)
     (define-key map (kbd "C-c C-t r") #'port-test-rerun-failed)
-    (define-key map (kbd "M-.")     #'port-find-definition)
     map)
-  "Keymap for `port-mode'.")
+  "Keymap for `port-mode'.
+`M-.' is intentionally not bound here; Port installs an
+`xref-backend-functions' entry on `port-mode' so the global
+`xref-find-definitions' binding (`M-.', `M-,', etc.) works on
+Clojure symbols whenever a session is live.")
 
 ;;;###autoload
 (define-minor-mode port-mode
@@ -217,10 +220,12 @@ where the namespace actually persists."
   (cond
    (port-mode
     (port-eldoc-setup)
-    (port-completion-setup))
+    (port-completion-setup)
+    (port-xref-setup))
    (t
     (port-eldoc-teardown)
-    (port-completion-teardown))))
+    (port-completion-teardown)
+    (port-xref-teardown))))
 
 (provide 'port-mode)
 

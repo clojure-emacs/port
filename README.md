@@ -18,7 +18,8 @@ spirit of [CIDER](https://github.com/clojure-emacs/cider) and
 - Structured stacktrace buffer for exceptions: cause chain, ex-data,
   navigable frames.
 - Eldoc, completion-at-point, doc/source/apropos/macroexpand helpers,
-  and `M-.` find-definition that follows into jar sources.
+  and an xref backend for `M-.` / `xref-find-apropos` that follows
+  into jar sources.
 - Dedicated `*port-taps*` buffer that accumulates values published via
   `tap>`, with `C-c C-t v` to view and `C-c C-t c` to clear.
 - `clojure.test` runner with a structured `*port-test-report*` buffer:
@@ -175,7 +176,10 @@ then attach from Emacs with `M-x port-connect` (defaults to `localhost:5555`).
 | `C-c C-t n` | `port-test-run-ns`          |
 | `C-c C-t p` | `port-test-run-project`     |
 | `C-c C-t r` | `port-test-rerun-failed`    |
-| `M-.`     | `port-find-definition`        |
+
+`M-.`, `M-,`, and `xref-find-apropos` come from Emacs's built-in
+`xref` and route through Port's backend whenever a session is live;
+nothing extra needs to be bound in `port-mode`.
 
 All output, including evaluation results from source buffers, ends up in the
 REPL buffer.
@@ -248,7 +252,8 @@ preferences. The full list:
 | `port-set-ns-form`         | `port-set-ns`                 |
 | `port-eldoc-form`          | eldoc-at-point                |
 | `port-completion-form`     | `completion-at-point`         |
-| `port-xref-form`           | `port-find-definition` (`M-.`) |
+| `port-xref-form`           | `xref-find-definitions` (`M-.`) |
+| `port-xref-apropos-form`   | `xref-find-apropos`           |
 | `port-test-run-ns-form`    | `port-test-run-ns`            |
 | `port-test-run-var-form`   | `port-test-run-at-point`      |
 | `port-test-run-all-form`   | `port-test-run-project`       |

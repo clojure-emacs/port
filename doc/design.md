@@ -345,21 +345,38 @@ needed elsewhere.
 
 ### `port-xref.el`
 
-The Clojure form returns a small map with `:name`, `:file`, `:line`,
-`:column` from the var's metadata, plus `:url` (the result of
-`clojure.java.io/resource` for `:file`) and, when the URL is a jar
-URL, the slurped `:contents`.  Our parser handles maps with string
-and integer leaves, so no encoding tricks needed here.
+An `xref-backend-functions' implementation rather than a bespoke
+command.  `port-mode' installs `port-xref-backend' as a buffer-local
+hook; whenever a session is live it returns the symbol `port`, and
+the various `xref-backend-*' generic functions dispatch on
+`(eql port)' to Port's implementations.  The upshot is that
+`M-.`, `M-,`, and `xref-find-apropos' work on Clojure symbols
+without Port needing any custom keybindings.
 
-The Elisp side falls through:
+Two operations are wired up.  `xref-backend-definitions' issues
+`port-xref-form' synchronously on the tool socket (via
+`port-tooling-call-sync', because xref's API is sync), parses the
+returned map, and resolves to one of three location types:
 
-1. Absolute `:file` that exists locally.
-2. `:file` resolved under `default-directory` (user code in the
-   current project).
-3. Jar URL with embedded `:contents` — a `*port-jar: foo.jar!/...*`
-   read-only buffer is created with the slurped source so M-. on
-   `clojure.core/map` lands in `clojure/core.clj`.
-4. Otherwise, message that we couldn't resolve.
+1. Absolute `:file` that exists locally → `xref-file-location'.
+2. `:file` resolvable under `default-directory' → ditto.
+3. Jar URL with embedded `:contents' → a `*port-jar: foo.jar!/...*'
+   read-only buffer is materialised up front so the returned
+   `xref-buffer-location' lands users straight in `clojure/core.clj`
+   for vars like `clojure.core/map`.
+
+`xref-backend-apropos' issues a second form (`port-xref-apropos-form')
+that walks `all-ns' once on the server side and returns a vector of
+`{:name :file :line :doc}' maps for symbols matching the pattern;
+each row turns into an `xref-item` with a `doc`-augmented summary
+when one is present.  Jar-internal entries are filtered server-side
+because slurping every jar for an apropos list would dominate the
+roundtrip.  The bigger `port-xref-apropos-timeout' (default 5s)
+reflects the bigger query.
+
+References aren't implemented.  Finding actual call sites needs
+static analysis; clojure-lsp via eglot/lsp-mode is the supported
+path for users who want that.
 
 ### `port-stacktrace.el`
 
@@ -471,12 +488,14 @@ Three patterns coexist:
    helpers (`port-load-file`, `port-set-ns`).  The user sends, output
    streams into the REPL.  No callbacks.
 2. **Async with callback.**  Tool-socket helpers (`port-doc`,
-   `port-source`, eldoc, `port-find-definition`).  `port-tooling-call`
+   `port-source`, eldoc, the test runner).  `port-tooling-call`
    delivers the result map to a callback once the matching `:ret`
    arrives.
-3. **Sync.**  Completion-at-point.  `port-tooling-call-sync` blocks
-   on `accept-process-output` until the callback fires or the
-   timeout elapses.
+3. **Sync.**  Completion-at-point and the xref backend.
+   `port-tooling-call-sync` blocks on `accept-process-output` until
+   the callback fires or the timeout elapses.  Used sparingly,
+   because xref's API and `completion-at-point-functions' both
+   demand synchronous returns.
 
 Pattern (3) is the only place we block Emacs.  We use it sparingly
 because completion is user-initiated and cap the wait at
@@ -525,15 +544,12 @@ architecture.
 
 In rough priority order:
 
-1. xref backend: replace the standalone `port-find-definition`
-   command with an `xref-backend-functions` implementation, which
-   gets us references and apropos UI for free.
-2. Trace-frame source resolution via the tool socket (round-trip
+1. Trace-frame source resolution via the tool socket (round-trip
    to `clojure.java.io/resource` per frame), so jar-only frames
    become navigable too.
-3. Jack-in for shadow-cljs, plus per-project alias selection.
-4. Multi-session support keyed per clojure-mode buffer.
-5. CIDER-style result overlays (deliberately listed last; the
+2. Jack-in for shadow-cljs, plus per-project alias selection.
+3. Multi-session support keyed per clojure-mode buffer.
+4. CIDER-style result overlays (deliberately listed last; the
    "all output goes to the REPL" UX is a deliberate choice).
 
 ## Versioning

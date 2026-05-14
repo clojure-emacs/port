@@ -2,14 +2,16 @@
 
 ;;; Commentary:
 
-;; Tests for the parts of find-definition that don't talk to a prepl:
-;; the query builder and the decoded-result shape.
+;; Tests for the parts of the xref backend that don't talk to a prepl:
+;; the query builders, the decoded-result-to-xref-item mapping, the
+;; jar-buffer helpers, and the setup/teardown hook plumbing.
 
 ;;; Code:
 
 (require 'buttercup)
 (require 'port-tooling)
 (require 'port-xref)
+(require 'xref)
 
 (describe "port-xref--query"
   (it "substitutes namespace, symbol, and resource lookup"
@@ -44,6 +46,134 @@
     ;; The Clojure form returns nil and the printed val is "nil".
     (expect (port-tooling-decode-val "nil") :to-be nil)))
 
+(describe "port-xref--apropos-query"
+  (it "compiles the pattern into a Clojure regex via re-pattern"
+    (let ((q (port-xref--apropos-query "foo")))
+      (expect q :to-match "re-pattern \"foo\"")
+      (expect q :to-match "all-ns")
+      (expect q :to-match ":name")
+      (expect q :to-match ":file")
+      (expect q :to-match ":line")))
+
+  (it "honours overrides of `port-xref-apropos-form'"
+    (let ((port-xref-apropos-form "(my.dialect/apropos %S)"))
+      (expect (port-xref--apropos-query "needle")
+              :to-equal "(my.dialect/apropos \"needle\")"))))
+
+
+(describe "port-xref--decoded->item"
+
+  (it "returns an xref-item with a file-location for an absolute existing path"
+    (let* ((tmp (make-temp-file "port-xref-test"))
+           (decoded `((:name . "my.ns/foo")
+                      (:file . ,tmp)
+                      (:line . 3))))
+      (unwind-protect
+          (let ((item (port-xref--decoded->item "foo" decoded)))
+            (expect item :to-be-truthy)
+            (expect (xref-item-summary item) :to-equal "my.ns/foo")
+            (let ((loc (xref-item-location item)))
+              (expect (xref-location-line loc) :to-equal 3)))
+        (delete-file tmp))))
+
+  (it "falls back to project-relative path when file isn't absolute"
+    (let* ((dir (make-temp-file "port-xref-rel" t))
+           (file (expand-file-name "rel.clj" dir))
+           (default-directory dir))
+      (with-temp-file file (insert "(ns rel)\n"))
+      (unwind-protect
+          (let ((item (port-xref--decoded->item
+                       "rel/x"
+                       '((:name . "rel/x")
+                         (:file . "rel.clj")
+                         (:line . 1)))))
+            (expect item :to-be-truthy)
+            (let ((loc (xref-item-location item)))
+              (expect (xref-location-line loc) :to-equal 1)))
+        (delete-directory dir t))))
+
+  (it "returns nil when no usable location is present"
+    (expect (port-xref--decoded->item
+             "x" '((:name . "x") (:file) (:line)))
+            :to-be nil))
+
+  (it "materialises a jar buffer location for jar URLs"
+    (let* ((url "jar:file:/tmp/sample.jar!/inner/x.clj")
+           (contents "(ns inner.x)\n(defn hello [] :hi)\n")
+           (buf-name (port-xref--jar-buffer-name url))
+           (existing (get-buffer buf-name)))
+      (when existing (kill-buffer existing))
+      (unwind-protect
+          (let ((item (port-xref--decoded->item
+                       "inner.x/hello"
+                       `((:name . "inner.x/hello")
+                         (:file . "inner/x.clj")
+                         (:line . 2)
+                         (:url . ,url)
+                         (:contents . ,contents)))))
+            (expect item :to-be-truthy)
+            (let ((loc (xref-item-location item)))
+              (expect (xref-buffer-location-buffer loc)
+                      :to-be (get-buffer buf-name))))
+        (when (get-buffer buf-name)
+          (kill-buffer buf-name))))))
+
+
+(describe "port-xref--apropos-row->item"
+
+  (it "builds a file-location item with a doc-augmented summary"
+    (let* ((tmp (make-temp-file "port-xref-apropos"))
+           (item (port-xref--apropos-row->item
+                  `((:name . "my.ns/foo")
+                    (:file . ,tmp)
+                    (:line . 5)
+                    (:doc  . "computes foo")))))
+      (unwind-protect
+          (progn
+            (expect item :to-be-truthy)
+            (expect (xref-item-summary item)
+                    :to-equal "my.ns/foo — computes foo"))
+        (delete-file tmp))))
+
+  (it "drops the doc when none is present"
+    (let* ((tmp (make-temp-file "port-xref-apropos"))
+           (item (port-xref--apropos-row->item
+                  `((:name . "my.ns/bar")
+                    (:file . ,tmp)
+                    (:line . 1)))))
+      (unwind-protect
+          (expect (xref-item-summary item) :to-equal "my.ns/bar")
+        (delete-file tmp))))
+
+  (it "returns nil when the file can't be resolved locally"
+    (expect (port-xref--apropos-row->item
+             '((:name . "x") (:file . "does/not/exist.clj") (:line . 1)))
+            :to-be nil)))
+
+
+(describe "port-xref-backend"
+
+  (it "returns 'port when a session is bound"
+    (let ((port-default-session 'sentinel))
+      (expect (port-xref-backend) :to-be 'port)))
+
+  (it "returns nil without an active session"
+    (let ((port-default-session nil))
+      (expect (port-xref-backend) :to-be nil))))
+
+
+(describe "port-xref setup / teardown"
+
+  (it "adds and removes the backend on `xref-backend-functions'"
+    (with-temp-buffer
+      (port-xref-setup)
+      (expect (memq #'port-xref-backend xref-backend-functions)
+              :to-be-truthy)
+      (port-xref-teardown)
+      (expect (memq #'port-xref-backend xref-backend-functions)
+              :to-be nil))))
+
+
 (describe "port-xref--jar-buffer-name"
 
   (it "extracts the jar name and inner path from a jar: URL"
@@ -56,22 +186,31 @@
     (expect (port-xref--jar-buffer-name "weird-url")
             :to-match "\\`\\*port-jar: ")))
 
-(describe "port-xref--visit-jar"
-  (it "creates a read-only buffer with the jar contents and jumps to LINE"
+(describe "port-xref--get-or-create-jar-buffer"
+  (it "creates a read-only Clojure-mode buffer with the contents"
     (let* ((url "jar:file:/tmp/foo.jar!/inner/x.clj")
            (contents "(ns inner.x)\n(defn hello [] :hi)\n")
            (buf-name (port-xref--jar-buffer-name url))
            (existing (get-buffer buf-name)))
       (when existing (kill-buffer existing))
       (unwind-protect
-          (save-window-excursion
-            (port-xref--visit-jar url contents 2)
-            (let ((buf (get-buffer buf-name)))
-              (expect buf :to-be-truthy)
-              (with-current-buffer buf
-                (expect buffer-read-only :to-be-truthy)
-                (expect port-xref--jar-url :to-equal url)
-                (expect (line-number-at-pos) :to-equal 2))))
+          (let ((buf (port-xref--get-or-create-jar-buffer url contents)))
+            (expect buf :to-be (get-buffer buf-name))
+            (with-current-buffer buf
+              (expect buffer-read-only :to-be-truthy)
+              (expect port-xref--jar-url :to-equal url)))
+        (when (get-buffer buf-name)
+          (kill-buffer buf-name)))))
+
+  (it "reuses an existing buffer for the same URL"
+    (let* ((url "jar:file:/tmp/foo.jar!/inner/y.clj")
+           (contents "(ns inner.y)\n")
+           (buf-name (port-xref--jar-buffer-name url)))
+      (when (get-buffer buf-name) (kill-buffer buf-name))
+      (unwind-protect
+          (let ((first  (port-xref--get-or-create-jar-buffer url contents))
+                (second (port-xref--get-or-create-jar-buffer url contents)))
+            (expect first :to-be second))
         (when (get-buffer buf-name)
           (kill-buffer buf-name))))))
 

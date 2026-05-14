@@ -2,6 +2,16 @@
 
 ## 0.2.0-snapshot (unreleased)
 
+- **Breaking:** `port-find-definition` is gone; replaced by a real
+  `xref-backend-functions` entry installed by `port-mode`.  The
+  default `M-.` / `M-,` bindings now route through Port whenever
+  a session is live, and `xref-find-apropos` (`C-M-.` by default)
+  returns matching symbols across all loaded namespaces, each
+  resolved to its file:line.  Two new defcustoms:
+  `port-xref-apropos-form` (the apropos query template, mirroring
+  `port-xref-form`) and `port-xref-apropos-timeout` (default 5
+  seconds, since walking `all-ns` isn't free).  References aren't
+  implemented; for that, layer clojure-lsp via eglot or lsp-mode.
 - `clojure.test` runner with a structured report buffer.  Four
   commands under `C-c C-t`: `t` runs the deftest at point, `n` the
   current namespace, `p` every loaded test-bearing namespace, and
