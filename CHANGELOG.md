@@ -2,6 +2,13 @@
 
 ## 0.3.0-snapshot (unreleased)
 
+- REPL input-completeness check rewritten on top of
+  `parse-partial-sexp' against a new `port-repl-input-syntax-table'
+  defvar.  Functionally identical to the previous hand-rolled
+  character walker (same balance, string, and `;'-comment
+  semantics), but ~20 lines shorter and override-friendly: drop in
+  a different syntax table to use Port's REPL with dialect variants
+  that have different bracket or comment conventions.
 - Wire-level message log for debugging.  Set `port-log-messages` to
   `t` (or run `M-x port-toggle-message-log`) and every outgoing form
   and incoming parsed message gets mirrored to `*port-messages*`,

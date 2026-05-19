@@ -397,32 +397,41 @@ than the one we're about to erase."
        (t
         (port-repl-send-input input)))))))
 
+(defvar port-repl-input-syntax-table
+  (let ((tbl (make-syntax-table)))
+    ;; Matched bracket pairs — Clojure uses all three flavours.
+    (modify-syntax-entry ?\( "()" tbl)
+    (modify-syntax-entry ?\) ")(" tbl)
+    (modify-syntax-entry ?\[ "(]" tbl)
+    (modify-syntax-entry ?\] ")[" tbl)
+    (modify-syntax-entry ?\{ "(}" tbl)
+    (modify-syntax-entry ?\} "){" tbl)
+    ;; Double-quoted strings with backslash escapes.
+    (modify-syntax-entry ?\" "\"" tbl)
+    (modify-syntax-entry ?\\ "\\" tbl)
+    ;; Semicolon line comments terminated by newline.
+    (modify-syntax-entry ?\; "<" tbl)
+    (modify-syntax-entry ?\n ">" tbl)
+    tbl)
+  "Syntax table used to check REPL input completeness.
+Default models Clojure: round, square, and curly brackets all
+open/close balanced pairs; double-quoted strings with backslash
+escapes; semicolon line comments terminated by newline.  Replace
+with a different syntax table to use Port's REPL with dialect
+variants that have different bracket or comment conventions.")
+
 (defun port-repl--input-complete-p (s)
-  "Heuristic: does S contain balanced parens/brackets/braces?"
-  (let ((depth 0)
-        (i 0)
-        (len (length s))
-        (in-string nil)
-        (escape nil))
-    (catch 'unbalanced
-      (while (< i len)
-        (let ((c (aref s i)))
-          (cond
-           (escape (setq escape nil))
-           (in-string
-            (cond
-             ((eq c ?\\) (setq escape t))
-             ((eq c ?\") (setq in-string nil))))
-           ((eq c ?\;) ;; line comment
-            (while (and (< i len) (not (eq (aref s i) ?\n)))
-              (cl-incf i))
-            (cl-decf i))
-           ((eq c ?\") (setq in-string t))
-           ((memq c '(?\( ?\[ ?\{)) (cl-incf depth))
-           ((memq c '(?\) ?\] ?\})) (cl-decf depth)
-            (when (< depth 0) (throw 'unbalanced nil)))))
-        (cl-incf i))
-      (and (= depth 0) (not in-string)))))
+  "Return non-nil when S forms a complete top-level expression.
+Uses `parse-partial-sexp' against `port-repl-input-syntax-table',
+so bracket balance, string state, and line comments are handled
+by Emacs's standard syntactic parser rather than a hand-rolled
+character walker."
+  (with-temp-buffer
+    (set-syntax-table port-repl-input-syntax-table)
+    (insert s)
+    (let ((state (parse-partial-sexp (point-min) (point-max))))
+      (and (zerop (nth 0 state))     ; bracket depth balanced
+           (null  (nth 3 state))))))  ; not inside a string
 
 (defun port-repl-send-input (input)
   "Submit INPUT to the prepl and append it to history."

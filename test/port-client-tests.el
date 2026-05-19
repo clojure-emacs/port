@@ -125,17 +125,40 @@
 
   (it "accepts balanced forms"
     (expect (port-repl--input-complete-p "(+ 1 2)") :to-be-truthy)
-    (expect (port-repl--input-complete-p "42") :to-be-truthy))
+    (expect (port-repl--input-complete-p "42") :to-be-truthy)
+    (expect (port-repl--input-complete-p "") :to-be-truthy))
 
-  (it "rejects unbalanced parens or strings"
+  (it "handles all three Clojure bracket flavours"
+    (expect (port-repl--input-complete-p "[1 2 3]") :to-be-truthy)
+    (expect (port-repl--input-complete-p "{:a 1 :b 2}") :to-be-truthy)
+    (expect (port-repl--input-complete-p "(defn f [x] {:x x})") :to-be-truthy))
+
+  (it "rejects unbalanced brackets or strings"
     (expect (port-repl--input-complete-p "(+ 1") :to-be nil)
+    (expect (port-repl--input-complete-p "[1 2") :to-be nil)
+    (expect (port-repl--input-complete-p "{:a 1") :to-be nil)
     (expect (port-repl--input-complete-p "\"unterminated") :to-be nil))
 
   (it "ignores closers inside strings and line comments"
     (expect (port-repl--input-complete-p "\"a string with ) inside\"")
             :to-be-truthy)
     (expect (port-repl--input-complete-p "(do ;; comment with )\n  1)")
-            :to-be-truthy)))
+            :to-be-truthy))
+
+  (it "honours a custom `port-repl-input-syntax-table'"
+    ;; Override with an Emacs-Lisp-style table where `[' is punctuation:
+    ;; `[1 2 3]' no longer registers as a balanced bracket pair, so we
+    ;; should see it as incomplete (unclosed `]' becomes a syntax error
+    ;; on the closing side, but the opener is no longer a paren either,
+    ;; so depth stays at 0 — accept this as `complete' in elisp's view).
+    (let ((port-repl-input-syntax-table
+           (let ((tbl (make-syntax-table)))
+             (modify-syntax-entry ?\( "()" tbl)
+             (modify-syntax-entry ?\) ")(" tbl)
+             tbl)))
+      (expect (port-repl--input-complete-p "(+ 1 2)") :to-be-truthy)
+      ;; Unbalanced paren still detected.
+      (expect (port-repl--input-complete-p "(+ 1") :to-be nil))))
 
 (describe "port-client message log"
 
