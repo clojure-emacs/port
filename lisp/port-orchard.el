@@ -75,12 +75,18 @@ spec, and a `See also' section pulled from ClojureDocs.")
 (defconst port-orchard-eldoc-form
   (concat "(when-let [m (orchard.info/info (quote %s) (quote %s))]"
           "  (when (:arglists m)"
-          "    (str (or (:ns m) (:class m)) \"/\""
-          "         (or (:name m) (:member m)) \": \""
-          "         (:arglists m))))")
+          "    {:name (str (or (:ns m) (:class m)) \"/\""
+          "                (or (:name m) (:member m)))"
+          "     :arglists (or (:arglists-str m) (pr-str (:arglists m)))"
+          "     :doc (when-let [d (:doc m)]"
+          "            (when (string? d)"
+          "              (subs d 0 (min 80 (count d)))))}))")
   "Orchard-flavored replacement for `port-eldoc-form'.
-First %s is namespace, second is symbol.  Returns a string
-matching Port's existing eldoc rendering shape.")
+First %s is namespace, second is symbol.  Returns the same
+`{:name :arglists :doc}' shape Port's default form produces, so
+arg-position highlighting works the same way.  The Orchard win
+over the default form is mostly Java-member info and namespace-
+alias resolution inside `orchard.info'.")
 
 (defconst port-orchard-apropos-form
   (concat "(with-out-str"

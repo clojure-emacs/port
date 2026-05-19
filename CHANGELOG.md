@@ -2,6 +2,22 @@
 
 ## 0.3.0-snapshot (unreleased)
 
+- Eldoc gained Neat-grade polish.  The default server-side form now
+  returns a `{:name :arglists :doc}` map, and the Elisp side parses
+  the arglist (`[f coll]` / `([] [x] [x & rs])` shapes), picks the
+  arity matching the current argument position, and highlights the
+  active parameter with `eldoc-highlight-function-argument'.  The
+  first line of `:doc' is appended to the display when present.
+  Target detection prefers the symbol at point, falling back to the
+  enclosing list head (so `(str |)' still shows `str''s arglist,
+  but `|str' shows `str''s directly).  Two new customisation
+  seams: `port-eldoc-arg-index-function` (swap for non-Lisp argument
+  boundaries) and `port-eldoc-arglist-formatter` (swap for servers
+  reporting arglists in a different syntax).  Form templates that
+  return a plain string still render verbatim, so 3rd-party overrides
+  stay backward compatible; the bundled Orchard variant has been
+  upgraded to return the new map shape too.
+
 ## 0.2.0 (2026-05-14)
 
 - Optional inline result overlays.  Set `port-eval-overlay' to

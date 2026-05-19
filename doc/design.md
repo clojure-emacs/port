@@ -321,14 +321,28 @@ deliberate axis:
 The eldoc backend uses `eldoc-documentation-functions`'s async
 callback form: when invoked, it dispatches a tool-socket request and
 returns non-nil to tell eldoc "I'll deliver later".  When the response
-arrives, the callback decodes the printed-string value (via
-`port-tooling-decode-val`) and hands the formatted arglist string to
-eldoc.
+arrives, the callback decodes the printed value (a `{:name :arglists
+:doc}' map for the default form, or a plain string for legacy
+overrides) and hands the formatted display string to eldoc.
 
-Target detection finds the function being called by walking up to
-the head of the enclosing list (via `syntax-ppss`).  Eldoc's
-existing idle timer governs how often we send requests, so we don't
-need our own debounce.
+Target detection prefers `thing-at-point' 'symbol so eldoc resolves
+the var point is on, falling back to the head of the enclosing list
+when point sits in whitespace mid-call.  The current argument
+position is computed by walking `forward-sexp' from just past the
+call head and counting completed sexps until point — works in any
+Lisp-flavored major mode without language-specific code.
+
+Arg highlighting parses Clojure-shape arglists (`[a b]` and the
+multi-arity `([] [a] [a b & rs])` form), picks the arity that fits
+the current arg-index, and wraps the active param in
+`eldoc-highlight-function-argument'.  Destructuring forms that the
+parser can't reduce (maps inside the vector, for example) fall
+through to the raw arglist string — no highlighting, but the user
+still sees the signature.  Two defvars expose the customisation
+seams: `port-eldoc-arg-index-function' (for non-Lisp argument
+boundaries) and `port-eldoc-arglist-formatter' (for servers
+reporting arglists in a different syntax).  Eldoc's existing idle
+timer governs request cadence, so no debouncing here.
 
 ### `port-completion.el`
 

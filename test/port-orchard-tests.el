@@ -24,10 +24,12 @@
       (expect form :to-match "orchard.info/info (quote my.ns) (quote foo)")
       (expect form :to-match "See also:")))
 
-  (it "eldoc form returns an arglists string"
+  (it "eldoc form returns the Port-shaped {:name :arglists :doc} map"
     (let ((form (format port-orchard-eldoc-form "my.ns" "foo")))
       (expect form :to-match "orchard.info/info (quote my.ns) (quote foo)")
-      (expect form :to-match ":arglists m")))
+      (expect form :to-match ":arglists ")
+      (expect form :to-match ":name ")
+      (expect form :to-match ":doc ")))
 
   (it "apropos form quotes the pattern as a Clojure string literal"
     (let ((form (format port-orchard-apropos-form "foo")))
