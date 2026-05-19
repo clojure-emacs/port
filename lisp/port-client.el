@@ -18,6 +18,57 @@
 (require 'cl-lib)
 (require 'subr-x)
 
+
+;;; Wire-level message logging
+
+(defcustom port-log-messages nil
+  "Non-nil to mirror every prepl message to `port-log-buffer-name'.
+Handy for debugging client/server interactions on either socket.
+Toggle interactively with `port-toggle-message-log'."
+  :type 'boolean
+  :group 'port)
+
+(defcustom port-log-buffer-name "*port-messages*"
+  "Name of the buffer used when `port-log-messages' is on."
+  :type 'string
+  :group 'port)
+
+;;;###autoload
+(defun port-toggle-message-log ()
+  "Toggle `port-log-messages' and pop to the log buffer when enabling."
+  (interactive)
+  (setq port-log-messages (not port-log-messages))
+  (message "Port: message log %s" (if port-log-messages "enabled" "disabled"))
+  (when port-log-messages
+    (display-buffer (get-buffer-create port-log-buffer-name))))
+
+(defun port-client--log (conn direction message)
+  "Append MESSAGE for CONN to the log buffer.
+DIRECTION is `:out' for outgoing form strings, `:in' for incoming
+parsed message maps.  No-op unless `port-log-messages' is non-nil.
+Header line carries a millisecond-precision timestamp, the
+direction arrow, the connection's `label' (when set), and
+host:port; the body is the form string verbatim or the parsed
+message printed via `pp'."
+  (when port-log-messages
+    (with-current-buffer (get-buffer-create port-log-buffer-name)
+      (goto-char (point-max))
+      (let ((label (port-client-label conn)))
+        (insert (format "%s %s %s%s:%d\n"
+                        (if (eq direction :out) "-->" "<--")
+                        (format-time-string "%H:%M:%S.%3N")
+                        (if label (format "[%s] " label) "")
+                        (port-client-host conn)
+                        (port-client-port conn))))
+      (cond
+       ((stringp message)
+        (insert message)
+        (unless (string-suffix-p "\n" message) (insert "\n")))
+       (t
+        (pp message (current-buffer))))
+      (insert "\n"))))
+
+
 (cl-defstruct (port-client
                (:constructor port-client--make)
                (:copier nil))
@@ -29,10 +80,13 @@
   pending           ; not-yet-parsed bytes
   repl-buffer       ; the REPL display buffer for this connection
   current-ns        ; tracked from :ret messages
-  handler)          ; function called with each parsed message map
+  handler           ; function called with each parsed message map
+  label)            ; "user" / "tool" / nil — appears in the message log
 
-(defun port-client-connect (host port)
+(defun port-client-connect (host port &optional label)
   "Open a prepl connection to HOST:PORT.
+LABEL is an optional short string (e.g. \"user\" / \"tool\") that
+identifies the connection in the message log buffer.
 Returns the `port-client' struct."
   (let* ((proc-buf (generate-new-buffer (format " *port-client-%s:%d*" host port)))
          (proc (make-network-process
@@ -50,7 +104,8 @@ Returns the `port-client' struct."
                  :buffer proc-buf
                  :pending ""
                  :current-ns "user"
-                 :handler #'ignore)))
+                 :handler #'ignore
+                 :label label)))
       (process-put proc 'port-connection conn)
       (set-process-filter proc #'port-client--filter)
       (set-process-sentinel proc #'port-client--sentinel)
@@ -69,6 +124,7 @@ The string need not be terminated by a newline; one is appended."
   (let ((proc (port-client-process conn)))
     (unless (process-live-p proc)
       (user-error "Port: connection is not live"))
+    (port-client--log conn :out form-string)
     (process-send-string proc (concat form-string "\n"))))
 
 (defun port-client--sentinel (proc event)
@@ -89,6 +145,7 @@ The string need not be terminated by a newline; one is appended."
     (let ((parsed (port-client--parse-messages text)))
       (setf (port-client-pending conn) (cdr parsed))
       (dolist (msg (car parsed))
+        (port-client--log conn :in msg)
         (when-let ((ns (alist-get :ns msg)))
           (setf (port-client-current-ns conn) ns))
         (funcall (port-client-handler conn) conn msg)))))

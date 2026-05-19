@@ -137,6 +137,65 @@
     (expect (port-repl--input-complete-p "(do ;; comment with )\n  1)")
             :to-be-truthy)))
 
+(describe "port-client message log"
+
+  (before-each
+    (let ((buf (get-buffer port-log-buffer-name)))
+      (when buf (kill-buffer buf))))
+  (after-each
+    (let ((buf (get-buffer port-log-buffer-name)))
+      (when buf (kill-buffer buf))))
+
+  (it "is a no-op when `port-log-messages' is nil"
+    (let ((port-log-messages nil)
+          (conn (port-client--make :host "h" :port 1)))
+      (port-client--log conn :out "(+ 1 2)")
+      (expect (get-buffer port-log-buffer-name) :to-be nil)))
+
+  (it "writes the outgoing form verbatim with a header line"
+    (let ((port-log-messages t)
+          (conn (port-client--make :host "localhost" :port 5555
+                                   :label "user")))
+      (port-client--log conn :out "(+ 1 2)")
+      (with-current-buffer (get-buffer port-log-buffer-name)
+        (let ((text (buffer-substring-no-properties
+                     (point-min) (point-max))))
+          (expect text :to-match "--> ")
+          (expect text :to-match "\\[user\\] localhost:5555")
+          (expect text :to-match "(\\+ 1 2)")))))
+
+  (it "pretty-prints incoming parsed messages"
+    (let ((port-log-messages t)
+          (conn (port-client--make :host "localhost" :port 5555
+                                   :label "tool")))
+      (port-client--log conn :in '((:tag . :ret) (:val . "42")
+                                   (:ns . "user")))
+      (with-current-buffer (get-buffer port-log-buffer-name)
+        (let ((text (buffer-substring-no-properties
+                     (point-min) (point-max))))
+          (expect text :to-match "<-- ")
+          (expect text :to-match "\\[tool\\] localhost:5555")
+          (expect text :to-match "(:tag \\. :ret)")
+          (expect text :to-match "(:val \\. \"42\")")))))
+
+  (it "omits the label bracket when none was set"
+    (let ((port-log-messages t)
+          (conn (port-client--make :host "h" :port 1)))
+      (port-client--log conn :out "x")
+      (with-current-buffer (get-buffer port-log-buffer-name)
+        (expect (buffer-substring-no-properties (point-min) (point-max))
+                :not :to-match "\\[")))))
+
+(describe "port-toggle-message-log"
+  (it "flips `port-log-messages' on each call"
+    (let ((port-log-messages nil))
+      (cl-letf (((symbol-function 'display-buffer) #'ignore)
+                ((symbol-function 'message) #'ignore))
+        (port-toggle-message-log)
+        (expect port-log-messages :to-be t)
+        (port-toggle-message-log)
+        (expect port-log-messages :to-be nil)))))
+
 (provide 'port-client-tests)
 
 ;;; port-client-tests.el ends here

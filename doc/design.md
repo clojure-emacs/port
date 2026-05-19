@@ -190,6 +190,15 @@ The handler indirection is what lets the same primitive serve both
 sockets without `port-client` needing to know anything about REPL
 buffers or callbacks.
 
+A `label` slot identifies the connection in the optional message
+log (`port-log-messages` / `*port-messages*`).  When non-nil,
+`port-client-send` mirrors the outgoing form before sending and
+`port-client--filter` mirrors each parsed incoming message before
+dispatching it to the handler, so the buffer captures both
+directions of the wire with millisecond timestamps and the
+`user`/`tool` label.  Cheap to leave wired in, opt-in via
+defcustom, no overhead when the flag is off.
+
 ### `port-session.el`
 
 A `port-session` ties two `port-client`s and a REPL buffer together,

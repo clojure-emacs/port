@@ -89,8 +89,8 @@ correlated helper-command requests, then pops to the REPL buffer."
    (list (read-string (format "Host (default %s): " port-default-host)
                       nil nil port-default-host)
          (read-number "Port: " port-default-port)))
-  (let* ((user-conn (port-client-connect host port))
-         (tool-conn (port-client-connect host port))
+  (let* ((user-conn (port-client-connect host port "user"))
+         (tool-conn (port-client-connect host port "tool"))
          (session   (port-session--make
                      :host host :port port
                      :user-conn user-conn

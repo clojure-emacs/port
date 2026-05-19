@@ -2,6 +2,12 @@
 
 ## 0.3.0-snapshot (unreleased)
 
+- Wire-level message log for debugging.  Set `port-log-messages` to
+  `t` (or run `M-x port-toggle-message-log`) and every outgoing form
+  and incoming parsed message gets mirrored to `*port-messages*`,
+  timestamped to the millisecond and tagged with the socket label
+  (`user` / `tool`) plus host:port.  Outgoing entries are the form
+  verbatim; incoming entries are `pp`'d.  Off by default.
 - Eldoc gained Neat-grade polish.  The default server-side form now
   returns a `{:name :arglists :doc}` map, and the Elisp side parses
   the arglist (`[f coll]` / `([] [x] [x & rs])` shapes), picks the
