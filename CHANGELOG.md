@@ -1,209 +1,58 @@
 # Changelog
 
-## 0.3.0-snapshot (unreleased)
+## main (unreleased)
 
-- **Fix** Emacs hang when receiving a large prepl response (e.g. the
-  completion warm-up against a namespace with thousands of vars).
-  The process filter re-parsed the entire accumulated buffer from
-  byte 0 on every TCP chunk, throwing `port-edn-incomplete` partway
-  through and walking the same prefix again on the next chunk —
-  O(M^2 / K) work plus a list of ~M cons cells discarded per
-  chunk.  For a 100 KB response in ~90 chunks that was enough GC
-  churn to freeze the editor for seconds.  We now defer the parse
-  attempt until the buffer contains a real newline (prepl's
-  per-message terminator; embedded newlines in printed strings are
-  escaped as `\\n'), so at most one parse runs per inbound message.
-  Microbenchmarks show ~10x speedup on 100 KB responses; the
-  reproducible recipe — typing `[:' in the REPL while the
-  completion warm-up is in flight — no longer hangs.
-- REPL input-completeness check rewritten on top of
-  `parse-partial-sexp' against a new `port-repl-input-syntax-table'
-  defvar.  Functionally identical to the previous hand-rolled
-  character walker (same balance, string, and `;'-comment
-  semantics), but ~20 lines shorter and override-friendly: drop in
-  a different syntax table to use Port's REPL with dialect variants
-  that have different bracket or comment conventions.
-- Wire-level message log for debugging.  Set `port-log-messages` to
-  `t` (or run `M-x port-toggle-message-log`) and every outgoing form
-  and incoming parsed message gets mirrored to `*port-messages*`,
-  timestamped to the millisecond and tagged with the socket label
-  (`user` / `tool`) plus host:port.  Outgoing entries are the form
-  verbatim; incoming entries are `pp`'d.  Off by default.
-- Eldoc gained Neat-grade polish.  The default server-side form now
-  returns a `{:name :arglists :doc}` map, and the Elisp side parses
-  the arglist (`[f coll]` / `([] [x] [x & rs])` shapes), picks the
-  arity matching the current argument position, and highlights the
-  active parameter with `eldoc-highlight-function-argument'.  The
-  first line of `:doc' is appended to the display when present.
-  Target detection prefers the symbol at point, falling back to the
-  enclosing list head (so `(str |)' still shows `str''s arglist,
-  but `|str' shows `str''s directly).  Two new customisation
-  seams: `port-eldoc-arg-index-function` (swap for non-Lisp argument
-  boundaries) and `port-eldoc-arglist-formatter` (swap for servers
-  reporting arglists in a different syntax).  Form templates that
-  return a plain string still render verbatim, so 3rd-party overrides
-  stay backward compatible; the bundled Orchard variant has been
-  upgraded to return the new map shape too.
+### New features
+
+- Wire-level message log for debugging: `M-x port-toggle-message-log` (or `port-log-messages t`) mirrors every outgoing form and incoming parsed message to `*port-messages*`, timestamped to the millisecond and labelled `user` / `tool`.  Off by default.
+- Eldoc highlights the active argument and shows a short docstring preview alongside the arglist.  Multi-arity arglists are parsed and the arity matching the current position picked automatically.  Customisable via `port-eldoc-arg-index-function` and `port-eldoc-arglist-formatter`.
+
+### Bugs fixed
+
+- Fix Emacs hang when a large prepl response (e.g. the completion warm-up against a namespace with thousands of vars) arrived in many TCP chunks.  The process filter used to re-parse the accumulated buffer from byte 0 on every chunk; it now defers parsing until a real newline arrives, at most one parse per inbound message.  ~10x speedup on 100KB responses.
+
+### Changes
+
+- REPL input-completeness check rewritten on top of `parse-partial-sexp` + the new `port-repl-input-syntax-table` defvar.  Same observable behaviour, override-friendly for dialect variants.
 
 ## 0.2.0 (2026-05-14)
 
-- Optional inline result overlays.  Set `port-eval-overlay' to
-  `t' and each interactive eval (`C-c C-e' on a sexp, `C-c C-c'
-  on a defun, etc.) places a `=> VALUE' overlay at the end of
-  the form, dismissed by the next command.  Composes with
-  `port-eval-display': you can keep your minibuffer / REPL
-  output and add the overlay on top.  Errors get the
-  `port-eval-overlay-error-face'; long values are truncated to
-  the first line (full text still lands in the REPL when
-  `port-eval-display' is `both').  Off by default, so the
-  existing minibuffer-or-REPL UX is unchanged.
-- `xref-find-definitions` now offers tab-completion at its prompt,
-  drawing from the same per-namespace cache `completion-at-point'
-  uses.  Falls back to free-form input when the cache is cold so
-  the prompt always works.
-- `M-x port` jacks in to babashka projects (`bb.edn`).  The
-  spawned command is `bb -e <server-form>`, identical to the
-  tools-deps / Leiningen invocations modulo the program name and
-  the dropped `-Sdeps` step (bb resolves classpath via `bb.edn`).
-  Pretty-print `:valf` works in bb too, so taps and eval results
-  arrive multi-line.  `port-jack-in-babashka-program` overrides
-  the `bb` binary; `port-jack-in-extra-deps` is ignored for bb.
-- `completion-at-point` no longer blocks Emacs on every keystroke.
-  Port now fetches the full symbol list for the buffer's namespace
-  once and filters Elisp-side on subsequent capf calls; corfu /
-  company-mode auto-popup feels instant after the first hit.  The
-  cache is warmed asynchronously when `port-mode' is enabled with a
-  session live, expires after `port-completion-cache-ttl` seconds
-  (default 10), and gets cleared eagerly when `port-load-file' or
-  `port-set-ns' runs.  `M-x port-completion-clear-cache' forces a
-  refresh.  Set `port-completion-use-cache` to nil for the previous
-  one-query-per-keystroke behaviour.
-- Trace-frame jumps in `*port-stacktrace*` now reach jar-only
-  frames.  `RET` on a frame whose `:file` doesn't resolve under
-  `default-directory` or a project source root now asks the JVM
-  via `clojure.java.io/resource` over the tool socket; jar URLs
-  open the slurped source in the same `*port-jar: ...*` buffer
-  cache `M-.` uses, `file:` URLs visit the path directly.  Two
-  new defcustoms: `port-stacktrace-frame-form` (the lookup
-  template) and `port-stacktrace-frame-timeout`.
-- **Breaking:** `port-find-definition` is gone; replaced by a real
-  `xref-backend-functions` entry installed by `port-mode`.  The
-  default `M-.` / `M-,` bindings now route through Port whenever
-  a session is live, and `xref-find-apropos` (`C-M-.` by default)
-  returns matching symbols across all loaded namespaces, each
-  resolved to its file:line.  Two new defcustoms:
-  `port-xref-apropos-form` (the apropos query template, mirroring
-  `port-xref-form`) and `port-xref-apropos-timeout` (default 5
-  seconds, since walking `all-ns` isn't free).  References aren't
-  implemented; for that, layer clojure-lsp via eglot or lsp-mode.
-- `clojure.test` runner with a structured report buffer.  Four
-  commands under `C-c C-t`: `t` runs the deftest at point, `n` the
-  current namespace, `p` every loaded test-bearing namespace, and
-  `r` re-runs whatever failed or errored last.  Results land in
-  `*port-test-report*` with per-failure sections showing
-  expected/actual and a `file:line` link to the source; `RET` on a
-  link jumps, `n`/`p` walk failures, `g` re-runs the same
-  selection.  Errors carry the captured `Throwable->map`, so `RET`
-  on `(RET to show stacktrace)` pops the existing structured
-  stacktrace buffer.  The Clojure-side machinery is held in
-  `port-test-bootstrap-form`; the four entry-point templates are
-  individual defcustoms (`port-test-run-ns-form` etc.) for dialect
-  or library overrides.
-- Optional [Orchard](https://github.com/clojure-emacs/orchard) and
-  [Compliment](https://github.com/alexander-yakushev/compliment)
-  integration via `port-orchard.el`.  `M-x port-enable-orchard' probes
-  the running prepl for `orchard.info' and `compliment.core' and swaps
-  in richer form templates for doc, eldoc, apropos, find-definition,
-  and completion — independently per library.  Or `setq' the
-  `port-orchard-*' / `port-compliment-*' defconsts persistently in
-  your init.
-- `port-enable-orchard-on-connect` defcustom: when non-nil,
-  `port-enable-orchard' runs automatically after every successful
-  jack-in / `port-connect'.  Paired with `port-jack-in-extra-deps' it
-  gets Orchard from "opt-in" to "always on" in two settings lines.
-- `port-after-connect-hook`: a hook run at the end of `port-connect'
-  once the tool-socket bootstrap has been installed.  Used internally
-  by `port-orchard.el' for the auto-enable wiring; available for any
-  user-side extension that needs to fire helper-command requests
-  immediately after connect.
-- Dedicated `*port-taps*` history buffer for values published via
-  `tap>`.  Each tap is appended with a timestamp header and rendered
-  in `clojure-mode` (or `clojure-ts-mode`) for syntax highlighting.
-  `port-show-taps` / `port-clear-taps` are bound to `C-c C-t v` /
-  `C-c C-t c` in `port-mode`; the buffer is capped at
-  `port-tap-max-entries` (default 100).
-- `port-jack-in-extra-deps` defcustom: alist of `(DEP . VERSION)`
-  pairs that get spliced into the JVM start command at jack-in
-  (`clojure -Sdeps {...}` for tools-deps, chained
-  `lein update-in :dependencies conj` for Leiningen).  Combined with
-  the new `port-jack-in-orchard-deps' preset, opting into Orchard +
-  Compliment is now a one-liner:
+### New features
 
-      (setq port-jack-in-extra-deps port-jack-in-orchard-deps)
+- `clojure.test` runner with a navigable `*port-test-report*` buffer.  `C-c C-t t` runs the deftest at point, `C-c C-t n` the current namespace, `C-c C-t p` every loaded test-bearing namespace, `C-c C-t r` re-runs the failures.  `RET` on a failure jumps to source or pops the stacktrace; `n`/`p` walk failures, `g` re-runs the same selection.
+- Optional [Orchard](https://github.com/clojure-emacs/orchard) and [Compliment](https://github.com/alexander-yakushev/compliment) integration via `port-orchard.el`.  `M-x port-enable-orchard` probes the running prepl and swaps in richer form templates for doc, eldoc, apropos, find-definition, and completion.
+- `port-enable-orchard-on-connect`: when non-nil, runs `port-enable-orchard` automatically after every successful jack-in / `port-connect`.
+- `port-after-connect-hook`: a hook run at the end of `port-connect` once the tool-socket bootstrap has been installed.
+- Dedicated `*port-taps*` history buffer for values published via `tap>`, bound to `C-c C-t v` (view) and `C-c C-t c` (clear).  Capped at `port-tap-max-entries` (default 100).
+- `port-jack-in-extra-deps` splices extra Maven coords into the jack-in command (tools-deps via `-Sdeps`, Leiningen via chained `update-in :dependencies conj`).  Ships with a `port-jack-in-orchard-deps` preset for one-line Orchard + Compliment opt-in.
+- `M-x port` jacks in to babashka projects (`bb.edn`).  Override the binary via `port-jack-in-babashka-program`.
+- Optional inline eval-result overlays via `port-eval-overlay` (off by default).  Composes with `port-eval-display`; errors get a distinct face.
 
-- `port-jack-in` is now an alias for `port' — discoverable under the
-  CIDER-style name for users with `cider-jack-in' muscle memory.
-- Jack-in now configures `io-prepl` with a `clojure.pprint`-based
-  `:valf` by default, so `:ret` and `:tap` values on the user socket
-  arrive pretty-printed (bounded by `port-print-length` /
-  `port-print-level`).  Set `port-jack-in-pretty-print` to nil for
-  the old single-line `pr-str` behaviour.
-- Every Clojure form Port sends to the prepl is now held in a
-  `defcustom` — `port-doc-form`, `port-source-form`,
-  `port-apropos-form`, `port-macroexpand-1-form`,
-  `port-macroexpand-all-form`, `port-load-file-form`,
-  `port-set-ns-form`, `port-eldoc-form`, `port-completion-form`,
-  and `port-xref-form`.  Each defaults to a JVM `clojure.repl/*`-style
-  form; override to target a different dialect (ClojureScript's
-  `cljs.repl/*`, a Compliment-based completion variant, etc.) without
-  having to fork Port.
+### Changes
+
+- **Breaking:** `port-find-definition` is gone; Port now installs an `xref-backend-functions` entry, so `M-.` / `M-,` route through the standard xref UI.  `xref-find-apropos` is also wired up.
+- `xref-find-definitions` offers tab-completion at the prompt from the per-namespace symbol cache.
+- `completion-at-point` no longer blocks Emacs on every keystroke.  Port pre-fetches the buffer's symbol list once per namespace and filters Elisp-side; the cache is warmed asynchronously and cleared by `port-load-file` / `port-set-ns`.  Opt out via `port-completion-use-cache` nil.
+- Trace-frame jumps in `*port-stacktrace*` now reach jar-only frames.  When local resolution misses, Port asks the JVM via `clojure.java.io/resource` and renders jar URLs in the shared `*port-jar: ...*` buffer cache.
+- Jack-in now configures `io-prepl` with a `clojure.pprint`-based `:valf` by default, so `:ret` and `:tap` values arrive pretty-printed.  Opt out via `port-jack-in-pretty-print` nil.
+- `port-jack-in` is now an alias for `port`, matching `cider-jack-in` muscle memory.
+- Every Clojure form Port sends to the prepl is now held in a `defcustom` (`port-doc-form`, `port-source-form`, `port-apropos-form`, etc.), making it easy to swap in dialect- or library-specific variants without forking Port.
 
 ## 0.1.0 (2026-05-11)
 
 Initial release.
 
-- TCP prepl client with a small EDN-ish reader (handles maps,
-  vectors, and lists with simple leaf values).
-- Two-socket session model: a user socket drives the REPL with raw
-  streaming output, and a separate tool socket carries helper-command
-  requests with reliable request/response correlation via a small
-  `port.tooling/-eval` bootstrap.
-- `M-x port` jacks in: detects `deps.edn` / `project.clj` / `bb.edn`,
-  picks a free port, spawns a JVM running a prepl server, polls until
-  reachable, and connects.  If a session is already active it just
-  pops to the REPL, SLIME-style.
-- Single-buffer REPL that renders `:ret`, `:out`, `:err`, and `:tap`
-  messages.  Eldoc, completion-at-point, and persistent input history
-  are wired into the prompt; killing the REPL buffer disconnects the
-  session.
-- Persistent REPL input history.  Each REPL buffer reads/writes
-  `<project-root>/.port-history` (configurable via
-  `port-repl-history-file`); `M-p` / `M-n` walk the history across
-  sessions.  Capacity is `port-repl-history-size` (default 1000)
-  and adjacent duplicates are dropped.
-- Interactive eval commands: last-sexp, defun-at-point, region, buffer.
-  Values returned through the tool-socket path are pretty-printed
-  via `clojure.pprint`, capped by `port-print-length` (default 50)
-  and `port-print-level` (default 5).  Multi-line results are
-  truncated to the first line in the minibuffer; the full text
-  appears in the REPL when `port-eval-display' is `both'.
-- Helper commands powered by Clojure evaluation: doc, source, apropos,
-  macroexpand-1, macroexpand, load-file, set-ns.
-- Eldoc support: arglists for the function whose call surrounds point,
-  resolved on the tool socket and delivered asynchronously via
-  `eldoc-documentation-functions`.
-- `completion-at-point` for symbols visible in the buffer's namespace,
-  driven by a synchronous tool-socket request that walks `ns-map'.
-- `port-find-definition` (bound to `M-.`) jumps to the source of the
-  symbol at point using `:file` / `:line` from var metadata.  When
-  the source lives inside a jar, the file's contents are slurped
-  over the tool socket and shown in a read-only `*port-jar: ...*`
-  buffer.
-- Structured stacktrace buffer (`*port-stacktrace*`): on `:exception
-  true` (and on `:tag :err` from the tool socket) Port renders a
-  concise one-line summary inline and pops a navigable buffer with
-  the cause chain, ex-data, and a filtered trace.  `RET` on a frame
-  jumps to the source when the file resolves locally.
-- `port-mode` minor mode for Clojure source buffers.  No hard
-  dependency on `clojure-mode`; hook it onto whichever Clojure mode
-  you use (`clojure-mode`, `clojure-ts-mode`, or both).
+### New features
+
+- TCP prepl client with a small EDN-ish reader for the subset of values prepl emits.
+- Two-socket session model: a user socket drives the REPL with raw streaming output; a separate tool socket carries helper-command requests, correlated via a small `port.tooling/-eval` bootstrap.
+- `M-x port` jacks in: detects `deps.edn` / `project.clj` / `bb.edn`, picks a free port, spawns the JVM, polls until reachable, and connects.
+- Single-buffer REPL rendering `:ret`, `:out`, `:err`, and `:tap` messages.  Eldoc, completion-at-point, and persistent input history wired into the prompt; killing the buffer disconnects the session.
+- Persistent REPL input history (`.port-history` under the project root by default), capped at `port-repl-history-size` and walkable via `M-p` / `M-n`.
+- Interactive eval commands (last-sexp, defun-at-point, region, buffer), pretty-printed via `clojure.pprint` and capped by `port-print-length` / `port-print-level`.
+- Helper commands: doc, source, apropos, macroexpand-1, macroexpand, load-file, set-ns.
+- Async eldoc: arglists for the function whose call surrounds point.
+- `completion-at-point` for symbols visible in the buffer's namespace.
+- `port-find-definition` (bound to `M-.`) jumps to the source of the symbol at point, slurping jar contents into a read-only `*port-jar: ...*` buffer when needed.
+- Structured stacktrace buffer (`*port-stacktrace*`) on `:exception true` or `:tag :err`, with the cause chain, ex-data, and a filtered trace with file:line jumps.
+- `port-mode` minor mode for Clojure source buffers; no hard dependency on `clojure-mode`.
