@@ -101,7 +101,11 @@ prepl → Port; small client over nREPL → monroe; zero server-side requirement
 ## Installation
 
 Port isn't on MELPA yet; it should get there once it stabilizes a bit.
-In the meantime, the easiest way is `package-vc-install` on Emacs 29+.
+In the meantime, install from source via one of the recipes below.
+
+### With package-vc-install
+
+The simplest path on Emacs 29+, no third-party package manager needed.
 
 **Pin to a release tag** (recommended for most users):
 
@@ -158,7 +162,48 @@ Latest:
 rather than at the repository root; without it `package-vc-install`
 won't add that directory to `load-path` and byte-compilation will fail.
 
-Port doesn't depend on any specific Clojure mode. Hook it onto whichever
+### With straight.el
+
+With [`straight.el`](https://github.com/radian-software/straight.el):
+
+```elisp
+(straight-use-package
+ '(port :type git :host github :repo "clojure-emacs/port"
+        :files ("lisp/*.el")))
+```
+
+`:files ("lisp/*.el")` plays the same role as `:lisp-dir "lisp"` above:
+it tells straight.el to pick up the package sources from the `lisp/`
+subdirectory.
+
+To pin a release tag, add `:branch "v0.2.0"` to the recipe (straight
+passes it straight to `git checkout`, so any tag, branch, or commit SHA
+works):
+
+```elisp
+(straight-use-package
+ '(port :type git :host github :repo "clojure-emacs/port"
+        :branch "v0.2.0"
+        :files ("lisp/*.el")))
+```
+
+Or combined with `use-package`:
+
+```elisp
+(use-package port
+  :straight (port :type git :host github :repo "clojure-emacs/port"
+                  :files ("lisp/*.el"))
+  :hook ((clojure-mode    . port-mode)
+         (clojure-ts-mode . port-mode)))
+```
+
+To keep the whole setup reproducible across machines, run `M-x
+straight-freeze-versions` after installing; that writes a lockfile so
+future `straight-pull-package` calls return to the exact same commits.
+
+### General notes
+
+Port doesn't depend on any specific Clojure mode.  Hook it onto whichever
 one(s) you actually use (`clojure-mode`, `clojure-ts-mode`, or both).
 
 For a manual checkout (e.g. while contributing):
