@@ -2,6 +2,8 @@
 
 ## main (unreleased)
 
+## 0.3.0 (2026-05-20)
+
 ### New features
 
 - Wire-level message log for debugging: `M-x port-toggle-message-log` (or `port-log-messages t`) mirrors every outgoing form and incoming parsed message to `*port-messages*`, timestamped to the millisecond and labelled `user` / `tool`.  Off by default.
