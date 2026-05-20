@@ -2,6 +2,10 @@
 
 ## main (unreleased)
 
+### New features
+
+- Completion candidates now carry capf annotations: corfu / company popups show a one-letter kind tag (`f`, `m`, `v`, `c`, …) plus the source namespace next to each candidate.  Works out of the box with the default form (vars / macros / classes); the bundled Compliment variant ships richer types (instance methods, keywords, locals, …) the same way.  Format is customisable via `port-completion-annotation-function`.
+
 ## 0.3.0 (2026-05-20)
 
 ### New features

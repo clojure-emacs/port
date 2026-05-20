@@ -44,11 +44,13 @@
       (expect form :to-match ":column (:column m)")
       (expect form :to-match ":contents")))
 
-  (it "compliment completion form binds ns and prefix"
+  (it "compliment completion form returns the rich {:candidate :type} shape"
     (let ((form (format port-compliment-completion-form "my.ns" "ma")))
       (expect form :to-match "compliment.core/completions")
       (expect form :to-match "(quote my.ns)")
-      (expect form :to-match "\"ma\""))))
+      (expect form :to-match "\"ma\"")
+      (expect form :to-match ":candidate")
+      (expect form :to-match ":type"))))
 
 (describe "port-orchard--apply"
 

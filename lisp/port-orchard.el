@@ -123,14 +123,21 @@ better jar / Java / REPL-temp-file resolution inside `info'.")
 (defconst port-compliment-completion-form
   (concat "(let [ns (quote %s)"
           "      prefix %S]"
-          "  (clojure.string/join \"\\n\""
-          "    (map :candidate"
-          "      (compliment.core/completions prefix"
-          "        {:ns ns :sort-order :by-length}))))")
+          "  (->> (compliment.core/completions prefix"
+          "         {:ns ns :sort-order :by-length})"
+          "       (map (fn [c]"
+          "              (cond-> {:candidate (:candidate c)"
+          "                       :type      (:type c)}"
+          "                (:ns c)       (assoc :ns (:ns c))"
+          "                (:arglists c) (assoc :arglists (:arglists c)))))"
+          "       vec))")
   "Compliment-flavored replacement for `port-completion-form'.
 First %s is namespace, %S is the prefix as a Clojure string
-literal.  Returns a newline-joined string of candidate names,
-matching the wire format the existing completion code expects.")
+literal.  Returns a vector of `{:candidate :type :ns :arglists}'
+maps shaped exactly like the default form's rich response, so
+the capf renders the same annotation column.  The win over the
+default is Compliment's wider coverage (locals, classes, java
+methods, keywords) and pre-computed `:arglists' / `:type' info.")
 
 (defconst port-orchard--probe-form
   (concat "{:orchard (try (require 'orchard.info)"

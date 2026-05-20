@@ -24,6 +24,14 @@
 ;; caching is off (`port-completion-use-cache' = nil) we fall back
 ;; to the old behaviour of issuing one synchronous prefix-filtered
 ;; query per keystroke.
+;;
+;; The default server-side form returns a vector of
+;; `{:candidate :type :ns}' maps, which lets the capf attach a
+;; short annotation (the kind tag plus the source ns) next to each
+;; candidate in the corfu/company popup.  Form templates that
+;; instead return the legacy newline-joined string of names still
+;; render — just without annotations — so any user customisation
+;; carried over from earlier versions keeps working.
 
 ;;; Code:
 
@@ -39,17 +47,39 @@
 
 (defcustom port-completion-form
   (concat "(let [ns (or (find-ns (quote %s)) (find-ns 'user))"
-          "      prefix %S"
-          "      cands (->> (keys (ns-map ns))"
-          "                 (map str)"
-          "                 (filter #(.startsWith ^String %% prefix))"
-          "                 distinct"
-          "                 sort)]"
-          "  (apply str (interpose \"\\n\" cands)))")
+          "      prefix %S]"
+          "  (->> (ns-map ns)"
+          "       (keep (fn [[s v]]"
+          "               (let [n (str s)]"
+          "                 (when (.startsWith ^String n prefix)"
+          "                   (cond"
+          "                     (class? v)"
+          "                     {:candidate n :type :class}"
+          "                     (var? v)"
+          "                     (let [m (meta v)]"
+          "                       {:candidate n"
+          "                        :type (cond (:macro m)    :macro"
+          "                                    (:arglists m) :function"
+          "                                    :else         :var)"
+          "                        :ns (some-> (:ns m) ns-name str)})"
+          "                     :else"
+          "                     {:candidate n :type :var})))))"
+          "       distinct"
+          "       (sort-by :candidate)"
+          "       vec))")
   "Format string for the completion query.
 The first %s is replaced with the buffer's namespace; %S is
 replaced with the typed prefix as a Clojure string literal.  The
-form must return a newline-joined string of candidate names.
+form must return either:
+
+- a vector of maps shaped `{:candidate \"name\" :type :function
+  :ns \"clojure.core\"}' (the rich shape; `:type' may be one of
+  the Compliment kinds: `:function', `:macro', `:var', `:class',
+  `:keyword', `:namespace', `:method', `:static-method',
+  `:field', `:static-field', `:special-form', `:local'; `:ns' and
+  `:arglists' are optional), or
+- a newline-joined string of candidate names (legacy shape,
+  rendered without annotations).
 
 When `port-completion-use-cache' is non-nil (the default), Port
 calls this form once per namespace with prefix=\"\" to fetch the
@@ -89,10 +119,13 @@ invalidation)."
   "Per-namespace cache of completion candidate lists.
 Keys are namespace strings; values are `(TIMESTAMP . CANDIDATES)'
 pairs.  TIMESTAMP is the `float-time' the entry was written; nil
-means \"sentinel pending fetch\".  Candidates are lists of strings.")
+means \"sentinel pending fetch\".  CANDIDATES is either a list of
+plain candidate strings (legacy form-template shape) or a list of
+`((:candidate . NAME) (:type . KIND) ...)' alists (default rich
+shape).")
 
 (defun port-completion--cached-symbols (ns)
-  "Return the cached symbol list for NS, or nil when stale/missing.
+  "Return the cached candidate list for NS, or nil when stale/missing.
 TTL is `port-completion-cache-ttl'; a nil value disables expiry."
   (when port-completion-use-cache
     (let ((entry (gethash ns port-completion--cache)))
@@ -104,18 +137,47 @@ TTL is `port-completion-cache-ttl'; a nil value disables expiry."
                         port-completion-cache-ttl)))
         (cdr entry)))))
 
+(defun port-completion-candidate-names (ns)
+  "Return the cached candidate *names* for NS as a list of strings.
+Works regardless of whether the cache holds rich annotation maps
+or plain strings.  Used by `port-xref' to drive the
+`xref-find-definitions' prompt's completion table."
+  (let ((cands (port-completion--cached-symbols ns)))
+    (cond
+     ((null cands) nil)
+     ((stringp (car cands)) cands)
+     (t (mapcar #'port-completion--name cands)))))
+
+(defun port-completion--name (cand)
+  "Return the candidate name of CAND (a string or an alist)."
+  (if (stringp cand) cand (alist-get :candidate cand)))
+
 (defun port-completion--store (ns cands)
   "Store CANDS as the cached candidate list for NS, timestamped now."
   (puthash ns (cons (float-time) cands) port-completion--cache))
 
 (defun port-completion--parse-response (result)
-  "Return a list of candidate strings from RESULT, or nil.
+  "Return a candidate list from RESULT, or nil.
 RESULT is the alist delivered by `port-tooling-call' /
-`port-tooling-call-sync'.  Empty payloads decode to nil."
+`port-tooling-call-sync'.  Recognises two shapes:
+
+- a Clojure vector of `{:candidate :type :ns ...}' maps decodes
+  to a list of alists; returned verbatim, so the capf can
+  attach an `:annotation-function';
+- a newline-joined string of names (legacy) decodes to a string;
+  split on `\\n' and returned as a list of plain strings (no
+  annotations possible from this shape)."
   (when (and result (eq :ok (alist-get :tag result)))
     (let ((decoded (port-tooling-decode-val (alist-get :val result))))
-      (when (and (stringp decoded) (not (string-empty-p decoded)))
-        (split-string decoded "\n" t)))))
+      (cond
+       ;; Rich shape: vector of maps → list of alists.
+       ((and (consp decoded)
+             (consp (car decoded))
+             (alist-get :candidate (car decoded)))
+        decoded)
+       ;; Legacy shape: newline-joined string of names.
+       ((and (stringp decoded) (not (string-empty-p decoded)))
+        (split-string decoded "\n" t))))))
 
 
 ;;; Query helpers
@@ -143,10 +205,12 @@ filter from the cache on the Elisp side."
         cands))))
 
 (defun port-completion--candidates (prefix)
-  "Return a list of candidates matching PREFIX, or nil.
-With caching on, walks the cached symbol list (fetching it first
-when the namespace hasn't been seen yet).  With caching off,
-issues a sync prefix-filtered query on every call."
+  "Return a candidate list matching PREFIX, or nil.
+With caching on, walks the cached candidate list (fetching it
+first when the namespace hasn't been seen yet).  With caching
+off, issues a sync prefix-filtered query on every call.  Elements
+are either strings (legacy form template) or alists carrying
+`:candidate' plus annotation fields."
   (when port-default-session
     (let ((ns (port-session-current-ns port-default-session)))
       (cond
@@ -154,13 +218,81 @@ issues a sync prefix-filtered query on every call."
         (let ((all (or (port-completion--cached-symbols ns)
                        (port-completion--fetch-and-cache ns))))
           (when all
-            (cl-remove-if-not (lambda (s) (string-prefix-p prefix s)) all))))
+            (cl-remove-if-not
+             (lambda (c) (string-prefix-p prefix (port-completion--name c)))
+             all))))
        (t
         (port-completion--parse-response
          (port-tooling-call-sync
           port-default-session
           (port-completion--query prefix ns)
           port-completion-timeout)))))))
+
+
+;;; Annotation formatting
+
+(defconst port-completion--type-tags
+  '((:function      . "f")
+    (:macro         . "m")
+    (:var           . "v")
+    (:class         . "c")
+    (:keyword       . "k")
+    (:namespace     . "n")
+    (:method        . "im")
+    (:static-method . "sm")
+    (:field         . "if")
+    (:static-field  . "sf")
+    (:special-form  . "s")
+    (:local         . "l")
+    (:symbol        . "s")
+    (:resource      . "r"))
+  "Short tag shown in capf annotations for each Compliment kind.
+Letters chosen for visual density in the corfu/company popup;
+override `port-completion-format-annotation' to customise.")
+
+(defun port-completion--type-tag (type)
+  "Return a short string tag for TYPE (a Compliment kind keyword)."
+  (or (alist-get type port-completion--type-tags)
+      (and (symbolp type) (substring (symbol-name type) 1 2))
+      ""))
+
+(defun port-completion-format-annotation (cand)
+  "Default formatter for capf annotations.
+CAND is one of the alists returned by the rich form template.
+Returns a short string like ` f clojure.core' (note the leading
+space — corfu and company both expect annotations to start with
+their own separator).  Returns nil when CAND has no usable
+metadata."
+  (let* ((type (alist-get :type cand))
+         (ns   (alist-get :ns cand))
+         (tag  (and type (port-completion--type-tag type))))
+    (cond
+     ((and tag ns (not (string-empty-p tag)))
+      (format " %s %s" tag ns))
+     ((and tag (not (string-empty-p tag)))
+      (format " %s" tag))
+     (ns
+      (format " %s" ns)))))
+
+(defvar port-completion-annotation-function
+  #'port-completion-format-annotation
+  "Function (CAND-ALIST) -> string used to render capf annotations.
+Called once per rich-shape candidate at popup time.  Receives the
+`:candidate'/`:type'/`:ns'/`:arglists' alist as input; should
+return a short display string (with the leading space corfu
+expects), or nil to omit the annotation.")
+
+(defun port-completion--annot-table (cands)
+  "Build a hash table mapping CANDS' candidate names to annotation strings."
+  (let ((tbl (make-hash-table :test 'equal)))
+    (dolist (c cands)
+      (let ((name (port-completion--name c))
+            (ann  (and (consp c)
+                       port-completion-annotation-function
+                       (funcall port-completion-annotation-function c))))
+        (when (and name ann)
+          (puthash name ann tbl))))
+    tbl))
 
 
 ;;; Async pre-fetch + invalidation
@@ -215,9 +347,16 @@ for the TTL."
       (let* ((start  (car bounds))
              (end    (cdr bounds))
              (prefix (buffer-substring-no-properties start end))
-             (cands  (port-completion--candidates prefix)))
-        (when cands
-          (list start end cands :exclusive 'no))))))
+             (raw    (port-completion--candidates prefix)))
+        (when raw
+          (let* ((rich  (and (consp raw) (consp (car raw))))
+                 (names (if rich (mapcar #'port-completion--name raw) raw))
+                 (annot (and rich (port-completion--annot-table raw))))
+            (append
+             (list start end names :exclusive 'no)
+             (when (and annot (> (hash-table-count annot) 0))
+               (list :annotation-function
+                     (lambda (cand) (gethash cand annot)))))))))))
 
 ;;;###autoload
 (defun port-completion-setup ()

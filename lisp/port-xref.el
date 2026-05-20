@@ -192,7 +192,7 @@ reusing whatever `port-completion' has cached for the current
 namespace.  Returns nil when the cache is cold (the user can still
 type a symbol freely; xref doesn't require a completion table)."
   (when port-default-session
-    (port-completion--cached-symbols
+    (port-completion-candidate-names
      (port-session-current-ns port-default-session))))
 
 (cl-defmethod xref-backend-definitions ((_backend (eql 'port)) identifier)
