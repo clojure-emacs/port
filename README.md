@@ -100,29 +100,63 @@ prepl → Port; small client over nREPL → monroe; zero server-side requirement
 
 ## Installation
 
-Port isn't on MELPA yet; it should get there once we cut a real release.
-In the meantime, the easiest way is `package-vc-install` on Emacs 29+:
+Port isn't on MELPA yet; it should get there once it stabilizes a bit.
+In the meantime, the easiest way is `package-vc-install` on Emacs 29+.
+
+**Pin to a release tag** (recommended for most users):
 
 ```elisp
 (package-vc-install
  '(port :url "https://github.com/clojure-emacs/port"
-        :branch "main"
+        :rev "v0.2.0"
         :lisp-dir "lisp"))
 ```
 
+`:rev` takes a tag (`"v0.2.0"`), a branch name (`"main"`), or a commit
+SHA.  See `git tag` on the [Port repo](https://github.com/clojure-emacs/port/tags)
+for the available release tags.
+
+**Track the latest commit** on `main` (handy if you want bug fixes
+between releases, at the cost of occasionally pulling in something
+unstable):
+
+```elisp
+(package-vc-install
+ '(port :url "https://github.com/clojure-emacs/port"
+        :lisp-dir "lisp"))
+```
+
+Without `:rev`, `package-vc-install` installs from the default branch.
+To upgrade to a newer revision later, run `M-x package-vc-upgrade RET
+port`.
+
 On Emacs 30+ with [`use-package`](https://github.com/jwiegley/use-package)
-you can put the same form in your config and let it handle install:
+you can put the same form in your config and let it handle install.
+Pinned:
 
 ```elisp
 (use-package port
-  :vc (:url "https://github.com/clojure-emacs/port" :branch "main" :lisp-dir "lisp")
+  :vc (:url "https://github.com/clojure-emacs/port"
+       :rev "v0.2.0"
+       :lisp-dir "lisp")
   :hook ((clojure-mode    . port-mode)
          (clojure-ts-mode . port-mode)))
 ```
 
-`:lisp-dir "lisp"` is needed because Port's sources live under `lisp/` rather
-than at the repository root; without it `package-vc-install` won't add that
-directory to `load-path` and byte-compilation will fail.
+Latest:
+
+```elisp
+(use-package port
+  :vc (:url "https://github.com/clojure-emacs/port"
+       :rev :newest
+       :lisp-dir "lisp")
+  :hook ((clojure-mode    . port-mode)
+         (clojure-ts-mode . port-mode)))
+```
+
+`:lisp-dir "lisp"` is needed because Port's sources live under `lisp/`
+rather than at the repository root; without it `package-vc-install`
+won't add that directory to `load-path` and byte-compilation will fail.
 
 Port doesn't depend on any specific Clojure mode. Hook it onto whichever
 one(s) you actually use (`clojure-mode`, `clojure-ts-mode`, or both).
