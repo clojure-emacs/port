@@ -209,6 +209,72 @@
         (expect (buffer-substring-no-properties (point-min) (point-max))
                 :not :to-match "\\[")))))
 
+(describe "port-client--filter chunked input"
+
+  ;; Regression test: a single message split across many TCP chunks
+  ;; used to trigger O(M^2 / K) re-parsing because the filter parsed
+  ;; from byte 0 on every chunk.  We now defer parsing until the
+  ;; accumulated buffer contains at least one real newline (prepl's
+  ;; per-message terminator), which means at most one parse attempt
+  ;; per inbound message.
+
+  (it "buffers chunks that don't yet contain a newline"
+    (let* ((delivered 0)
+           (conn (port-client--make
+                  :host "h" :port 1
+                  :buffer (generate-new-buffer " *test*")
+                  :pending ""
+                  :handler (lambda (_c _m) (cl-incf delivered))))
+           (proc (make-symbol "fake-proc")))
+      (unwind-protect
+          (progn
+            (put proc 'process-properties (list 'port-connection conn))
+            (cl-letf (((symbol-function 'process-get)
+                       (lambda (_p _k) conn)))
+              ;; Stream a long :val across two chunks without the
+              ;; trailing newline.  Old behavior: 2 expensive parses
+              ;; on incomplete data.  New behavior: 0 parses, just
+              ;; accumulation.
+              (let ((parses 0))
+                (cl-letf* ((orig (symbol-function 'port-client--parse-messages))
+                           ((symbol-function 'port-client--parse-messages)
+                            (lambda (s) (cl-incf parses) (funcall orig s))))
+                  (port-client--filter
+                   proc "{:tag :ret, :val \"aaaaaaaaaa")
+                  (port-client--filter
+                   proc "bbbbbbbbbb\", :ns \"user\", :ms 0, :form \"\"}")
+                  (expect parses :to-equal 0)
+                  (expect delivered :to-equal 0)
+                  ;; A final newline completes the message; exactly
+                  ;; one parse fires and the handler sees one msg.
+                  (port-client--filter proc "\n")
+                  (expect parses :to-equal 1)
+                  (expect delivered :to-equal 1)))))
+        (kill-buffer (port-client-buffer conn)))))
+
+  (it "still handles multiple messages arriving together"
+    (let* ((msgs '())
+           (conn (port-client--make
+                  :host "h" :port 1
+                  :buffer (generate-new-buffer " *test*")
+                  :pending ""
+                  :handler (lambda (_c m) (push m msgs))))
+           (proc (make-symbol "fake-proc")))
+      (unwind-protect
+          (progn
+            (put proc 'process-properties (list 'port-connection conn))
+            (cl-letf (((symbol-function 'process-get)
+                       (lambda (_p _k) conn)))
+              (port-client--filter
+               proc
+               (concat "{:tag :out, :val \"hi\\n\"}\n"
+                       "{:tag :ret, :val \"42\", :ns \"user\", :ms 0, :form \"42\"}\n"))
+              (expect (length msgs) :to-equal 2)
+              (expect (alist-get :tag (nth 1 msgs)) :to-be :out)
+              (expect (alist-get :tag (nth 0 msgs)) :to-be :ret)))
+        (kill-buffer (port-client-buffer conn))))))
+
+
 (describe "port-toggle-message-log"
   (it "flips `port-log-messages' on each call"
     (let ((port-log-messages nil))

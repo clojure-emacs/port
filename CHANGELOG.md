@@ -2,6 +2,20 @@
 
 ## 0.3.0-snapshot (unreleased)
 
+- **Fix** Emacs hang when receiving a large prepl response (e.g. the
+  completion warm-up against a namespace with thousands of vars).
+  The process filter re-parsed the entire accumulated buffer from
+  byte 0 on every TCP chunk, throwing `port-edn-incomplete` partway
+  through and walking the same prefix again on the next chunk —
+  O(M^2 / K) work plus a list of ~M cons cells discarded per
+  chunk.  For a 100 KB response in ~90 chunks that was enough GC
+  churn to freeze the editor for seconds.  We now defer the parse
+  attempt until the buffer contains a real newline (prepl's
+  per-message terminator; embedded newlines in printed strings are
+  escaped as `\\n'), so at most one parse runs per inbound message.
+  Microbenchmarks show ~10x speedup on 100 KB responses; the
+  reproducible recipe — typing `[:' in the REPL while the
+  completion warm-up is in flight — no longer hangs.
 - REPL input-completeness check rewritten on top of
   `parse-partial-sexp' against a new `port-repl-input-syntax-table'
   defvar.  Functionally identical to the previous hand-rolled

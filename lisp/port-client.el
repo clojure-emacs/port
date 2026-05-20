@@ -139,16 +139,33 @@ The string need not be terminated by a newline; one is appended."
               (insert (format "\n;; Connection %s\n" (string-trim event))))))))))
 
 (defun port-client--filter (proc chunk)
-  "Process filter for prepl PROC receiving CHUNK."
+  "Process filter for prepl PROC receiving CHUNK.
+prepl frames each message with a trailing newline (`prn').  Real
+newlines never appear inside message bodies — `pr-str' escapes
+embedded ones as `\\n' (two chars) inside printed strings.  So if
+we haven't seen a real newline in the accumulated buffer yet, the
+current message is still in flight and parsing it now would just
+walk a long incomplete form, throw `port-edn-incomplete', and
+walk it again next chunk.  For a 100 KB+ response (e.g. the
+completion warm-up's full ns-map) arriving in many chunks, that's
+O(M^2 / K) work and enough GC churn to freeze the editor.
+
+So: only attempt parsing once the buffer contains at least one
+newline.  Worst case one parse per inbound message instead of one
+per TCP chunk."
   (let* ((conn (process-get proc 'port-connection))
          (text (concat (port-client-pending conn) chunk)))
-    (let ((parsed (port-client--parse-messages text)))
-      (setf (port-client-pending conn) (cdr parsed))
-      (dolist (msg (car parsed))
-        (port-client--log conn :in msg)
-        (when-let ((ns (alist-get :ns msg)))
-          (setf (port-client-current-ns conn) ns))
-        (funcall (port-client-handler conn) conn msg)))))
+    (cond
+     ((not (string-search "\n" text))
+      (setf (port-client-pending conn) text))
+     (t
+      (let ((parsed (port-client--parse-messages text)))
+        (setf (port-client-pending conn) (cdr parsed))
+        (dolist (msg (car parsed))
+          (port-client--log conn :in msg)
+          (when-let ((ns (alist-get :ns msg)))
+            (setf (port-client-current-ns conn) ns))
+          (funcall (port-client-handler conn) conn msg)))))))
 
 
 ;;; Message parsing
