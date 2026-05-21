@@ -511,6 +511,98 @@ direct evals from a Clojure buffer behave like typing into the REPL.
 For the deeper rationale and a walkthrough of each module, see
 [`doc/design.md`](doc/design.md).
 
+## Troubleshooting
+
+A few first stops when something doesn't work the way you expect, in
+roughly the order you should reach for them.
+
+### Watch the wire
+
+`M-x port-toggle-message-log` (or `(setq port-log-messages t)`) mirrors
+every outgoing form and incoming parsed message to `*port-messages*`,
+timestamped to the millisecond and labelled `user` / `tool`.  This is
+the single most useful Port-specific debugging tool: when something
+looks wrong, the log usually shows whether the request was even sent,
+whether a response came back, and what shape it had.
+
+Two cautions:
+
+- Leave the log off when you're not debugging.  Every incoming message
+  is `pp`'d into the buffer; on a big response (e.g. the completion
+  warm-up's full ns-map) that pretty-printing can itself cost
+  measurable time.
+- If Emacs hangs *while the log is on*, see if disabling it
+  (`port-log-messages nil`) fixes things — `pp` formatting a large
+  payload is sometimes the actual culprit.
+
+### Capture a backtrace from a hang
+
+If Emacs locks up, you can interrupt it with `C-g` and get a backtrace
+of exactly where it was stuck:
+
+```
+M-x toggle-debug-on-quit RET     ;; arm C-g for a backtrace
+;; reproduce the hang
+C-g                              ;; interrupts; *Backtrace* pops open
+```
+
+The top few frames usually point straight at the offender.  Attach
+the backtrace to a bug report.
+
+### Profile a slow operation
+
+For sluggishness that isn't a full hang:
+
+```
+M-x profiler-start RET RET       ;; CPU profiler
+;; reproduce the slow operation
+M-x profiler-report
+```
+
+The report shows which functions consumed the most time.  Look for
+Port-side hot spots (e.g. `port-client--parse-messages`,
+`port-completion--candidates`) versus consumer-side ones (corfu,
+company, eldoc).
+
+### Isolate Port's caching layer
+
+If you suspect the completion cache:
+
+```elisp
+(setq port-completion-use-cache nil)
+```
+
+This drops back to one synchronous query per keystroke (slower but
+with bounded response sizes).  If the symptom disappears, the cache
+or the warm-up is involved; if it persists, look elsewhere.
+`M-x port-completion-clear-cache` forces a fresh fetch without
+disabling the cache entirely.
+
+### Check the JVM side
+
+In jack-in mode, the spawned JVM's stdout/stderr goes to
+`*port-server*` (a sibling buffer to the REPL).  If a Port command
+silently does nothing, that buffer often has the answer (e.g. an
+unresolved class, a port already in use, a startup exception before
+the prepl server came up).
+
+For runtime errors on either socket, `*port-stacktrace*` carries the
+parsed cause chain and a navigable trace (`RET` on a frame jumps to
+the source, even into jar contents).
+
+### What to include in a bug report
+
+When in doubt:
+
+- Emacs version (`M-x emacs-version`).
+- Port version (`port-version`).
+- The contents of `*Messages*` since the symptom appeared.
+- A `*port-messages*` excerpt around the suspect interaction.
+- The `*Backtrace*` from a `C-g` during the hang, if applicable.
+- Whatever's relevant from `*port-server*` (in jack-in mode).
+
+Issues go to [the Port issue tracker](https://github.com/clojure-emacs/port/issues).
+
 ## Limitations (today)
 
 - No inline overlays or debugger. (The tool socket makes both tractable;
