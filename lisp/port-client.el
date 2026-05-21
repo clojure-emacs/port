@@ -33,6 +33,16 @@ Toggle interactively with `port-toggle-message-log'."
   :type 'string
   :group 'port)
 
+(defcustom port-log-pretty-print nil
+  "When non-nil, format logged messages with `pp' instead of `prin1'.
+`pp' produces multi-line, indented output that's easier to read,
+but it can take seconds on a large deeply-nested message (e.g.
+the completion warm-up's full ns-map response).  The default
+`prin1' is essentially free no matter how big the payload, at
+the cost of single-line, denser output."
+  :type 'boolean
+  :group 'port)
+
 ;;;###autoload
 (defun port-toggle-message-log ()
   "Toggle `port-log-messages' and pop to the log buffer when enabling."
@@ -48,8 +58,9 @@ DIRECTION is `:out' for outgoing form strings, `:in' for incoming
 parsed message maps.  No-op unless `port-log-messages' is non-nil.
 Header line carries a millisecond-precision timestamp, the
 direction arrow, the connection's `label' (when set), and
-host:port; the body is the form string verbatim or the parsed
-message printed via `pp'."
+host:port; the body is the form string verbatim, or the parsed
+message printed via `prin1' (single-line, fast) or `pp' (pretty,
+slow on big messages) depending on `port-log-pretty-print'."
   (when port-log-messages
     (with-current-buffer (get-buffer-create port-log-buffer-name)
       (goto-char (point-max))
@@ -64,8 +75,11 @@ message printed via `pp'."
        ((stringp message)
         (insert message)
         (unless (string-suffix-p "\n" message) (insert "\n")))
+       (port-log-pretty-print
+        (pp message (current-buffer)))
        (t
-        (pp message (current-buffer))))
+        (prin1 message (current-buffer))
+        (insert "\n")))
       (insert "\n"))))
 
 

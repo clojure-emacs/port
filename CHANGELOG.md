@@ -2,6 +2,10 @@
 
 ## main (unreleased)
 
+### Changes
+
+- `*port-messages*` log entries are now printed via `prin1` instead of `pp` by default.  `pp` formatting was the actual culprit behind a recent reported Emacs hang while typing in the REPL: pretty-printing a 4000-entry completion warm-up response takes ~120ms; `prin1` takes ~6ms.  Set the new `port-log-pretty-print` defcustom to `t` to opt back in to multi-line readable output.
+
 ### New features
 
 - Completion candidates now carry capf annotations: corfu / company popups show a one-letter kind tag (`f`, `m`, `v`, `c`, …) plus the source namespace next to each candidate.  Works out of the box with the default form (vars / macros / classes); the bundled Compliment variant ships richer types (instance methods, keywords, locals, …) the same way.  Format is customisable via `port-completion-annotation-function`.

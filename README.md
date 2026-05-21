@@ -525,15 +525,12 @@ the single most useful Port-specific debugging tool: when something
 looks wrong, the log usually shows whether the request was even sent,
 whether a response came back, and what shape it had.
 
-Two cautions:
-
-- Leave the log off when you're not debugging.  Every incoming message
-  is `pp`'d into the buffer; on a big response (e.g. the completion
-  warm-up's full ns-map) that pretty-printing can itself cost
-  measurable time.
-- If Emacs hangs *while the log is on*, see if disabling it
-  (`port-log-messages nil`) fixes things — `pp` formatting a large
-  payload is sometimes the actual culprit.
+By default the log uses `prin1` (single-line, fast).  Set
+`port-log-pretty-print` to `t` to switch to `pp` for nicer
+multi-line formatting — handy when entries are small, but be aware
+that pretty-printing a deeply-nested 100KB response can itself
+take measurable time, so if Emacs hangs while the log is on and
+`port-log-pretty-print` is set, flip it back off.
 
 ### Capture a backtrace from a hang
 

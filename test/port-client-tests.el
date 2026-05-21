@@ -187,8 +187,9 @@
           (expect text :to-match "\\[user\\] localhost:5555")
           (expect text :to-match "(\\+ 1 2)")))))
 
-  (it "pretty-prints incoming parsed messages"
+  (it "prints incoming parsed messages on a single line by default"
     (let ((port-log-messages t)
+          (port-log-pretty-print nil)
           (conn (port-client--make :host "localhost" :port 5555
                                    :label "tool")))
       (port-client--log conn :in '((:tag . :ret) (:val . "42")
@@ -199,7 +200,28 @@
           (expect text :to-match "<-- ")
           (expect text :to-match "\\[tool\\] localhost:5555")
           (expect text :to-match "(:tag \\. :ret)")
-          (expect text :to-match "(:val \\. \"42\")")))))
+          (expect text :to-match "(:val \\. \"42\")")
+          ;; Body is single-line: the message prints on one line,
+          ;; sandwiched between the header line and the trailing blank.
+          (expect (length (split-string text "\n" t)) :to-equal 2)))))
+
+  (it "uses `pp' when `port-log-pretty-print' is non-nil"
+    ;; Feed something pp will definitely line-break (a list of entries
+    ;; well past `fill-column'); confirm the body spans multiple lines,
+    ;; which prin1 wouldn't produce.
+    (let* ((port-log-messages t)
+           (port-log-pretty-print t)
+           (conn (port-client--make :host "localhost" :port 5555
+                                    :label "tool"))
+           (long-msg (cl-loop for i from 0 to 20
+                              collect (cons (intern (format ":k%d" i))
+                                            (make-string 20 ?x)))))
+      (port-client--log conn :in long-msg)
+      (with-current-buffer (get-buffer port-log-buffer-name)
+        (let ((text (buffer-substring-no-properties
+                     (point-min) (point-max))))
+          (expect (length (split-string text "\n" t))
+                  :to-be-greater-than 2)))))
 
   (it "omits the label bracket when none was set"
     (let ((port-log-messages t)
