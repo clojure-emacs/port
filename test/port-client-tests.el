@@ -229,7 +229,88 @@
       (port-client--log conn :out "x")
       (with-current-buffer (get-buffer port-log-buffer-name)
         (expect (buffer-substring-no-properties (point-min) (point-max))
-                :not :to-match "\\[")))))
+                :not :to-match "\\["))))
+
+  (it "puts the log buffer in `port-log-mode'"
+    (let ((port-log-messages t)
+          (conn (port-client--make :host "h" :port 1)))
+      (port-client--log conn :out "x")
+      (with-current-buffer (get-buffer port-log-buffer-name)
+        (expect (derived-mode-p 'port-log-mode) :to-be-truthy)
+        (expect buffer-read-only :to-be-truthy))))
+
+  (it "renders `:note' direction with the !!! arrow + warning face"
+    (let ((port-log-messages t)
+          (conn (port-client--make :host "h" :port 1)))
+      (port-client--log conn :note "dropped malformed frame")
+      (with-current-buffer (get-buffer port-log-buffer-name)
+        (let ((text (buffer-substring-no-properties
+                     (point-min) (point-max))))
+          (expect text :to-match "!!!")
+          (expect text :to-match "dropped malformed frame")
+          (goto-char (point-min))
+          (expect (get-text-property (point) 'face)
+                  :to-be 'port-log-note-face)))))
+
+  (it "truncates messages past `port-log-max-message-length'"
+    (let* ((port-log-messages t)
+           (port-log-max-message-length 50)
+           (conn (port-client--make :host "h" :port 1))
+           (big-string (make-string 500 ?x)))
+      (port-client--log conn :out big-string)
+      (with-current-buffer (get-buffer port-log-buffer-name)
+        (let ((text (buffer-substring-no-properties
+                     (point-min) (point-max))))
+          (expect text :to-match "\\[truncated, 501 bytes total\\]")
+          (expect (length text) :to-be-less-than 200)))))
+
+  (it "trims the buffer past `port-log-max-buffer-lines'"
+    (let ((port-log-messages t)
+          (port-log-max-buffer-lines 10)
+          (conn (port-client--make :host "h" :port 1)))
+      (dotimes (i 20)
+        (port-client--log conn :out (format "entry-%d" i)))
+      (with-current-buffer (get-buffer port-log-buffer-name)
+        ;; Earliest entries are gone; latest are kept.
+        (let ((text (buffer-substring-no-properties
+                     (point-min) (point-max))))
+          (expect text :not :to-match "entry-0\n")
+          (expect text :to-match "entry-19")
+          (expect (count-lines (point-min) (point-max))
+                  :to-be-less-than 12))))))
+
+
+(describe "port-show-message-log"
+
+  (before-each
+    (let ((buf (get-buffer port-log-buffer-name)))
+      (when buf (kill-buffer buf))))
+  (after-each
+    (let ((buf (get-buffer port-log-buffer-name)))
+      (when buf (kill-buffer buf))))
+
+  (it "creates and displays the buffer without flipping the flag"
+    (let ((port-log-messages nil))
+      (cl-letf (((symbol-function 'display-buffer) (lambda (b) b)))
+        (port-show-message-log))
+      (expect (get-buffer port-log-buffer-name) :to-be-truthy)
+      (expect port-log-messages :to-be nil))))
+
+
+(describe "port-clear-message-log"
+
+  (it "wipes the log buffer when one exists"
+    (let ((port-log-messages t)
+          (conn (port-client--make :host "h" :port 1)))
+      (port-client--log conn :out "x")
+      (port-clear-message-log)
+      (with-current-buffer (get-buffer port-log-buffer-name)
+        (expect (buffer-size) :to-equal 0))))
+
+  (it "is a no-op when no log buffer exists"
+    (let ((buf (get-buffer port-log-buffer-name)))
+      (when buf (kill-buffer buf)))
+    (expect (port-clear-message-log) :to-be nil)))
 
 (describe "port-client--filter chunked input"
 

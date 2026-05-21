@@ -2,6 +2,10 @@
 
 ## main (unreleased)
 
+### New features
+
+- The message log buffer now has its own `port-log-mode` (read-only, `q` to bury, `c` to clear), with distinct faces per direction and a `:note` direction (`!!!` arrow) for internal entries.  New commands `port-show-message-log` and `port-clear-message-log`.  Per-message truncation past `port-log-max-message-length` (default 2000), buffer-wide trim past `port-log-max-buffer-lines` (default 5000), and auto-follow that only chases windows already scrolled to the end.
+
 ### Changes
 
 - `*port-messages*` log entries are now printed via `prin1` instead of `pp` by default.  `pp` formatting was the actual culprit behind a recent reported Emacs hang while typing in the REPL: pretty-printing a 4000-entry completion warm-up response takes ~120ms; `prin1` takes ~6ms.  Set the new `port-log-pretty-print` defcustom to `t` to opt back in to multi-line readable output.

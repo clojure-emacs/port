@@ -43,6 +43,92 @@ the cost of single-line, denser output."
   :type 'boolean
   :group 'port)
 
+(defcustom port-log-max-message-length 2000
+  "Max characters to insert per message in the log buffer.
+Messages longer than this are truncated and tagged with the original
+byte count.  Set to nil to disable truncation (slow on huge values)."
+  :type '(choice integer (const :tag "No limit" nil))
+  :group 'port)
+
+(defcustom port-log-max-buffer-lines 5000
+  "Max lines to retain in `port-log-buffer-name'.
+When exceeded, the oldest entries get trimmed from the front so the
+buffer doesn't grow without bound during long sessions.  Set to nil
+to disable trimming."
+  :type '(choice integer (const :tag "No limit" nil))
+  :group 'port)
+
+(defface port-log-out-face
+  '((t :inherit font-lock-function-name-face))
+  "Face for outgoing-form markers in the message log."
+  :group 'port)
+
+(defface port-log-in-face
+  '((t :inherit font-lock-string-face))
+  "Face for incoming-message markers in the message log."
+  :group 'port)
+
+(defface port-log-note-face
+  '((t :inherit warning))
+  "Face for internal note entries (e.g. malformed prepl input)."
+  :group 'port)
+
+(defface port-log-meta-face
+  '((t :inherit shadow))
+  "Face for timestamp, label, and host:port metadata in the log."
+  :group 'port)
+
+(defvar port-log-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map special-mode-map)
+    (define-key map (kbd "c") #'port-clear-message-log)
+    map)
+  "Keymap for `port-log-mode'.")
+
+(define-derived-mode port-log-mode special-mode "port-log"
+  "Major mode for the `*port-messages*' buffer.
+Read-only with `q' to bury and `c' to clear."
+  (setq-local truncate-lines nil)
+  (setq-local buffer-undo-list t))
+
+(defun port-client--log-buffer ()
+  "Return the message log buffer, enabling `port-log-mode' if needed."
+  (let ((buf (get-buffer-create port-log-buffer-name)))
+    (with-current-buffer buf
+      (unless (derived-mode-p 'port-log-mode)
+        (port-log-mode)))
+    buf))
+
+(defun port-client--log-format (message)
+  "Render MESSAGE for the log, truncating past the configured limit.
+String MESSAGEs are inserted verbatim; everything else is formatted
+via `prin1' or `pp' depending on `port-log-pretty-print'."
+  (let* ((raw (cond
+               ((stringp message)
+                (if (string-suffix-p "\n" message) message
+                  (concat message "\n")))
+               (port-log-pretty-print
+                (with-output-to-string (pp message)))
+               (t
+                (concat (prin1-to-string message) "\n")))))
+    (if (and port-log-max-message-length
+             (> (length raw) port-log-max-message-length))
+        (concat (substring raw 0 port-log-max-message-length)
+                (format "... [truncated, %d bytes total]\n"
+                        (length raw)))
+      raw)))
+
+(defun port-client--log-trim ()
+  "Trim the current buffer to `port-log-max-buffer-lines'."
+  (when port-log-max-buffer-lines
+    (let ((excess (- (count-lines (point-min) (point-max))
+                     port-log-max-buffer-lines)))
+      (when (> excess 0)
+        (save-excursion
+          (goto-char (point-min))
+          (forward-line excess)
+          (delete-region (point-min) (point)))))))
+
 ;;;###autoload
 (defun port-toggle-message-log ()
   "Toggle `port-log-messages' and pop to the log buffer when enabling."
@@ -50,37 +136,64 @@ the cost of single-line, denser output."
   (setq port-log-messages (not port-log-messages))
   (message "Port: message log %s" (if port-log-messages "enabled" "disabled"))
   (when port-log-messages
-    (display-buffer (get-buffer-create port-log-buffer-name))))
+    (display-buffer (port-client--log-buffer))))
+
+;;;###autoload
+(defun port-show-message-log ()
+  "Pop up the message log buffer regardless of `port-log-messages'."
+  (interactive)
+  (display-buffer (port-client--log-buffer)))
+
+(defun port-clear-message-log ()
+  "Wipe the message log buffer."
+  (interactive)
+  (when-let* ((buf (get-buffer port-log-buffer-name)))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (erase-buffer)))))
 
 (defun port-client--log (conn direction message)
   "Append MESSAGE for CONN to the log buffer.
 DIRECTION is `:out' for outgoing form strings, `:in' for incoming
-parsed message maps.  No-op unless `port-log-messages' is non-nil.
-Header line carries a millisecond-precision timestamp, the
-direction arrow, the connection's `label' (when set), and
-host:port; the body is the form string verbatim, or the parsed
-message printed via `prin1' (single-line, fast) or `pp' (pretty,
-slow on big messages) depending on `port-log-pretty-print'."
+parsed messages, or `:note' for internal entries (e.g. malformed
+prepl input the parser dropped).  No-op unless `port-log-messages'
+is non-nil.  Windows showing the log buffer that are scrolled to
+the end auto-follow new entries; windows scrolled up are left
+alone."
   (when port-log-messages
-    (with-current-buffer (get-buffer-create port-log-buffer-name)
-      (goto-char (point-max))
-      (let ((label (port-client-label conn)))
-        (insert (format "%s %s %s%s:%d\n"
-                        (if (eq direction :out) "-->" "<--")
-                        (format-time-string "%H:%M:%S.%3N")
-                        (if label (format "[%s] " label) "")
-                        (port-client-host conn)
-                        (port-client-port conn))))
-      (cond
-       ((stringp message)
-        (insert message)
-        (unless (string-suffix-p "\n" message) (insert "\n")))
-       (port-log-pretty-print
-        (pp message (current-buffer)))
-       (t
-        (prin1 message (current-buffer))
-        (insert "\n")))
-      (insert "\n"))))
+    (let ((buf (port-client--log-buffer)))
+      (with-current-buffer buf
+        (let* ((inhibit-read-only t)
+               (windows (get-buffer-window-list buf nil t))
+               (following (cl-remove-if-not
+                           (lambda (w) (= (window-point w) (point-max)))
+                           windows))
+               (arrow (pcase direction
+                        (:out  "-->")
+                        (:in   "<--")
+                        (:note "!!!")
+                        (_     "???")))
+               (arrow-face (pcase direction
+                             (:out  'port-log-out-face)
+                             (:in   'port-log-in-face)
+                             (:note 'port-log-note-face)
+                             (_     'default)))
+               (label (port-client-label conn))
+               (meta  (format "%s %s%s:%d"
+                              (format-time-string "%H:%M:%S.%3N")
+                              (if label (format "[%s] " label) "")
+                              (port-client-host conn)
+                              (port-client-port conn))))
+          (save-excursion
+            (goto-char (point-max))
+            (insert (propertize arrow 'face arrow-face) " "
+                    (propertize meta  'face 'port-log-meta-face)
+                    "\n"
+                    (port-client--log-format message)
+                    "\n")
+            (port-client--log-trim))
+          (dolist (w following)
+            (set-window-point w (point-max))))))))
 
 
 (cl-defstruct (port-client

@@ -525,8 +525,21 @@ the single most useful Port-specific debugging tool: when something
 looks wrong, the log usually shows whether the request was even sent,
 whether a response came back, and what shape it had.
 
-By default the log uses `prin1` (single-line, fast).  Set
-`port-log-pretty-print` to `t` to switch to `pp` for nicer
+Entries are prefixed `-->` (outgoing form), `<--` (incoming
+message), or `!!!` (internal note).  The buffer is in `port-log-mode`:
+`q` buries, `c` clears.  Windows scrolled to the end auto-follow new
+entries; scroll up and the log stops chasing the cursor.  A couple of
+knobs worth knowing:
+
+- `port-show-message-log` pops the buffer up without toggling.
+- `port-clear-message-log` wipes it.
+- `port-log-max-message-length` (default 2000) truncates each
+  message body, tagged with `[truncated, N bytes total]`.
+- `port-log-max-buffer-lines` (default 5000) trims the oldest entries
+  on the fly so long sessions don't grow the buffer without bound.
+
+By default the body is rendered via `prin1` (single-line, fast).
+Set `port-log-pretty-print` to `t` to switch to `pp` for nicer
 multi-line formatting — handy when entries are small, but be aware
 that pretty-printing a deeply-nested 100KB response can itself
 take measurable time, so if Emacs hangs while the log is on and
