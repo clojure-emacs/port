@@ -12,8 +12,10 @@
 (require 'port-tooling)
 
 (defun port-completion-tests--clear ()
-  "Reset the completion cache between tests."
-  (clrhash port-completion--cache))
+  "Reset every cache slot between tests (per-ns + core)."
+  (clrhash port-completion--cache)
+  (setq port-completion--core-cache nil
+        port-completion--core-cache-pending nil))
 
 (describe "port-completion--query"
 
@@ -31,30 +33,62 @@
       (expect (port-completion--query "ma" "user")
               :to-equal "(my-dialect/complete 'user \"ma\")")))
 
-  (it "defaults the form to one that returns rich :candidate maps"
+  (it "defaults the form to one that emits the tab-delimited shape"
     (let ((q (port-completion--query "" "my.ns")))
-      (expect q :to-match ":candidate")
-      (expect q :to-match ":type")
+      (expect q :to-match "\\\\tc\\\\t")          ; class branch literal
       (expect q :to-match ":macro")
-      (expect q :to-match ":function"))))
+      (expect q :to-match ":arglists")
+      (expect q :to-match "clojure.string/join"))))
+
+
+(describe "port-completion--decode-row"
+
+  (it "decodes a fully-populated row into a candidate alist"
+    (expect (port-completion--decode-row "map\tf\tclojure.core")
+            :to-equal
+            '((:candidate . "map") (:type . :function) (:ns . "clojure.core"))))
+
+  (it "drops :ns when the ns field is empty"
+    (expect (port-completion--decode-row "do\ts\t")
+            :to-equal '((:candidate . "do") (:type . :special-form))))
+
+  (it "returns a plain string when both code and ns are empty"
+    (expect (port-completion--decode-row "raw\t\t") :to-equal "raw")
+    (expect (port-completion--decode-row "raw")     :to-equal "raw"))
+
+  (it "passes unknown codes through as `:CODE' for forward-compat"
+    (expect (port-completion--decode-row "thing\tzz\t")
+            :to-equal '((:candidate . "thing") (:type . :zz))))
+
+  (it "returns nil for rows with an empty name"
+    ;; An empty :candidate would shadow every core entry in the merge,
+    ;; so we drop the row entirely.
+    (expect (port-completion--decode-row "\tf\tclojure.core") :to-be nil)
+    (expect (port-completion--decode-row "") :to-be nil)))
 
 
 (describe "port-completion--parse-response"
 
-  (it "splits the legacy newline-joined string into a list of names"
-    (expect (port-completion--parse-response
-             '((:tag . :ok) (:val . "\"map\\nmapcat\\nmapv\"")))
-            :to-equal '("map" "mapcat" "mapv")))
-
-  (it "returns the rich list of alists verbatim"
-    ;; The decoder turns a printed `[{...}{...}]' vector into a list
-    ;; of alists; parse-response should pass it through unchanged.
+  (it "decodes the tab-delimited default shape"
     (expect (port-completion--parse-response
              '((:tag . :ok)
-               (:val . "[{:candidate \"map\" :type :function :ns \"clojure.core\"} {:candidate \"max\" :type :function :ns \"clojure.core\"}]")))
+               (:val . "map\tf\tclojure.core\nmax\tf\tclojure.core")))
             :to-equal
             '(((:candidate . "map") (:type . :function) (:ns . "clojure.core"))
               ((:candidate . "max") (:type . :function) (:ns . "clojure.core")))))
+
+  (it "splits the oldest newline-only string into a list of names"
+    (expect (port-completion--parse-response
+             '((:tag . :ok) (:val . "map\nmapcat\nmapv")))
+            :to-equal '("map" "mapcat" "mapv")))
+
+  (it "returns a Compliment-shaped list of alists verbatim"
+    ;; With -data-eval, :val is already the parsed list of alists.
+    (let ((rich '(((:candidate . "map") (:type . :function) (:ns . "clojure.core"))
+                  ((:candidate . "max") (:type . :function) (:ns . "clojure.core")))))
+      (expect (port-completion--parse-response
+               `((:tag . :ok) (:val . ,rich)))
+              :to-equal rich)))
 
   (it "returns nil when the response isn't :ok"
     (expect (port-completion--parse-response
@@ -63,8 +97,21 @@
 
   (it "returns nil on an empty payload"
     (expect (port-completion--parse-response
-             '((:tag . :ok) (:val . "\"\"")))
-            :to-be nil)))
+             '((:tag . :ok) (:val . "")))
+            :to-be nil))
+
+  (it "passes a custom form's bare list of strings through unchanged"
+    (expect (port-completion--parse-response
+             '((:tag . :ok) (:val . ("map" "mapcat" "mapv"))))
+            :to-equal '("map" "mapcat" "mapv")))
+
+  (it "drops decoded-as-nil rows from the tab-delimited shape"
+    ;; A row with an empty name field gets dropped by decode-row.
+    (expect (port-completion--parse-response
+             '((:tag . :ok)
+               (:val . "map\tf\tclojure.core\n\tf\tclojure.core")))
+            :to-equal
+            '(((:candidate . "map") (:type . :function) (:ns . "clojure.core"))))))
 
 (describe "port-completion cache"
 
@@ -163,6 +210,76 @@
 
   (it "returns nil for a cold cache"
     (expect (port-completion-candidate-names "no.such") :to-be nil)))
+
+
+(describe "port-completion two-tier cache"
+
+  (before-each (port-completion-tests--clear))
+  (after-each  (port-completion-tests--clear))
+
+  (it "is enabled by default and disabled by a custom port-completion-form"
+    (expect (port-completion--two-tier-p) :to-be-truthy)
+    (let ((port-completion-form "(my-dialect/complete '%s %S)"))
+      (expect (port-completion--two-tier-p) :to-be nil)))
+
+  (it "is disabled when use-core-cache or use-cache is off"
+    (let ((port-completion-use-core-cache nil))
+      (expect (port-completion--two-tier-p) :to-be nil))
+    (let ((port-completion-use-cache nil))
+      (expect (port-completion--two-tier-p) :to-be nil)))
+
+  (it "renders the core ns list as both set and vector literals"
+    (let ((port-completion-core-namespaces '("clojure.core" "clojure.string")))
+      (expect (port-completion--core-set-literal)
+              :to-equal "#{\"clojure.core\" \"clojure.string\"}")
+      (expect (port-completion--core-vec-literal)
+              :to-equal "[\"clojure.core\" \"clojure.string\"]")))
+
+  (it "passes the core-ns set as a third argument to the local form"
+    (let ((q (port-completion--query "ma" "my.ns")))
+      (expect q :to-match "core-nses #{\"clojure.core\"}")
+      (expect q :to-match "find-ns (quote my.ns)")
+      (expect q :to-match "prefix \"ma\"")))
+
+  (it "switches to the single-tier form when a custom form is in effect"
+    (let ((port-completion-form "(my-dialect/complete '%s %S)"))
+      (expect (port-completion--query "ma" "my.ns")
+              :to-equal "(my-dialect/complete 'my.ns \"ma\")")))
+
+  (it "merges locals with the core cache, locals shadowing on conflicts"
+    (setq port-completion--core-cache
+          '(((:candidate . "map")    (:type . :function) (:ns . "clojure.core"))
+            ((:candidate . "filter") (:type . :function) (:ns . "clojure.core"))))
+    (port-completion--store "my.ns"
+                            '(((:candidate . "map")  (:type . :var) (:ns . "my.ns"))
+                              ((:candidate . "frob") (:type . :function) (:ns . "my.ns"))))
+    (let ((merged (port-completion--cached-symbols "my.ns")))
+      (expect (mapcar #'port-completion--name merged)
+              :to-equal '("map" "frob" "filter"))
+      ;; Local `map' wins (type :var), not core's :function.
+      (expect (alist-get :type (car merged)) :to-be :var)))
+
+  (it "is a passthrough when two-tier mode is off"
+    (setq port-completion--core-cache '("map" "filter"))
+    (let ((port-completion-use-core-cache nil))
+      (expect (port-completion--merge-with-core '("foo")) :to-equal '("foo"))))
+
+  (it "is a passthrough when the core cache is empty"
+    (expect (port-completion--merge-with-core '("foo" "bar"))
+            :to-equal '("foo" "bar")))
+
+  (it "port-completion-refresh-core clears the core cache"
+    (setq port-completion--core-cache '("map" "filter"))
+    (cl-letf (((symbol-function 'port-completion--warm-core) #'ignore))
+      (port-completion-refresh-core))
+    (expect port-completion--core-cache :to-be nil))
+
+  (it "port-completion-invalidate leaves the core cache alone"
+    (setq port-completion--core-cache '("map" "filter"))
+    (port-completion--store "user" '("frob"))
+    (port-completion-invalidate)
+    (expect port-completion--core-cache :to-equal '("map" "filter"))
+    (expect (hash-table-count port-completion--cache) :to-equal 0)))
 
 
 (describe "port-completion-format-annotation"

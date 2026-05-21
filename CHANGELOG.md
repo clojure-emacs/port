@@ -5,15 +5,13 @@
 ### New features
 
 - The message log buffer now has its own `port-log-mode` (read-only, `q` to bury, `c` to clear), with distinct faces per direction and a `:note` direction (`!!!` arrow) for internal entries.  New commands `port-show-message-log` and `port-clear-message-log`.  Per-message truncation past `port-log-max-message-length` (default 2000), buffer-wide trim past `port-log-max-buffer-lines` (default 5000), and auto-follow that only chases windows already scrolled to the end.
+- Two-tier completion cache: symbols from `port-completion-core-namespaces` (default `("clojure.core")`) are fetched once per session into a shared global cache, and per-namespace queries skip them server-side.  In typical projects this cuts the warm-up response by ~10x and the per-keystroke cache walk by the same factor.  Auto-disabled when `port-completion-form` is customised away from the default (so the Compliment override installed by `port-enable-orchard` still works).  Refresh manually via `M-x port-completion-refresh-core`.
 
 ### Changes
 
 - `*port-messages*` log entries are now printed via `prin1` instead of `pp` by default.  `pp` formatting was the actual culprit behind a recent reported Emacs hang while typing in the REPL: pretty-printing a 4000-entry completion warm-up response takes ~120ms; `prin1` takes ~6ms.  Set the new `port-log-pretty-print` defcustom to `t` to opt back in to multi-line readable output.
 - Tool-socket bootstrap now defines a second wrapper `port.tooling/-data-eval` alongside `-eval`.  The data variant skips the inner `pr-str` so prepl's outer print does a single serialization pass; the Elisp side then has parsed data directly in `:val` rather than a printed string that needs re-parsing.  Eliminates one full EDN round-trip per tooling call and the escape-doubling that bites long nested strings.  Completion, xref, eldoc, stacktrace, test, and Orchard probes have been migrated to the new path; `port-tooling-call` / `port-tooling-decode-val` are unchanged for display callers (`port-doc`, `port-source`, etc.).  Existing sessions need to reconnect to pick up the new bootstrap.
-
-### New features
-
-- Completion candidates now carry capf annotations: corfu / company popups show a one-letter kind tag (`f`, `m`, `v`, `c`, …) plus the source namespace next to each candidate.  Works out of the box with the default form (vars / macros / classes); the bundled Compliment variant ships richer types (instance methods, keywords, locals, …) the same way.  Format is customisable via `port-completion-annotation-function`.
+- Completion wire format is now a tab- and newline-delimited string (`name\tCODE\tns\n…`) instead of a vector of EDN maps.  No alist or keyword allocation per candidate at parse time — `split-string` on tab and newline, then build the alist only for candidates that actually need annotation.  ~5x faster decode on the warm-up response.  The Compliment / Orchard rich shape (vector of maps) still parses for backward compat.
 
 ## 0.3.0 (2026-05-20)
 
