@@ -196,8 +196,8 @@ filter returns the entire namespace; subsequent capf invocations
 filter from the cache on the Elisp side."
   (when port-default-session
     (let* ((form   (port-completion--query "" ns))
-           (result (port-tooling-call-sync port-default-session form
-                                           port-completion-timeout))
+           (result (port-tooling-call-data-sync port-default-session form
+                                                port-completion-timeout))
            (cands  (port-completion--parse-response result)))
       (when cands
         (when port-completion-use-cache
@@ -223,7 +223,7 @@ are either strings (legacy form template) or alists carrying
              all))))
        (t
         (port-completion--parse-response
-         (port-tooling-call-sync
+         (port-tooling-call-data-sync
           port-default-session
           (port-completion--query prefix ns)
           port-completion-timeout)))))))
@@ -312,7 +312,7 @@ silently gives up; a real capf invocation will retry as needed."
              (null (gethash ns port-completion--cache)))
     (puthash ns (cons nil nil) port-completion--cache) ; pending sentinel
     (condition-case _
-        (port-tooling-call
+        (port-tooling-call-data
          port-default-session
          (port-completion--query "" ns)
          (lambda (result)

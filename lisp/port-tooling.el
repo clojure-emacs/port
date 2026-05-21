@@ -59,6 +59,19 @@ Set to nil for no limit.  Internally this is bound to Clojure's
                   :ex (pr-str (Throwable->map t))
                   :ex-message (or (.getMessage t) (.getName (class t)))
                   :out (str out-buf) :err (str err-buf)})))))
+       (clojure.core/defn -data-eval [id thunk]
+         (let [out-buf (java.io.StringWriter.)
+               err-buf (java.io.StringWriter.)]
+           (binding [*out* out-buf *err* err-buf]
+             (try
+               (let [v (thunk)]
+                 {:port/id id :tag :ok :val v
+                  :out (str out-buf) :err (str err-buf)})
+               (catch Throwable t
+                 {:port/id id :tag :err
+                  :ex (pr-str (Throwable->map t))
+                  :ex-message (or (.getMessage t) (.getName (class t)))
+                  :out (str out-buf) :err (str err-buf)})))))
        (clojure.core/defn -user-eval [id ns-sym form-string plen plev]
          (let [out-buf (java.io.StringWriter.)
                err-buf (java.io.StringWriter.)]
@@ -80,12 +93,25 @@ Set to nil for no limit.  Internally this is bound to Clojure's
                   :ex-message (or (.getMessage t) (.getName (class t)))
                   :out (str out-buf) :err (str err-buf)}))))))"
   "Clojure form sent on the tool socket on connect.
-Defines `port.tooling/-eval' (the wrapper used by `port-tooling-call'
-for internal helper queries; uses `pr-str' so the result can be
-re-parsed on the Elisp side) and `port.tooling/-user-eval' (the
-namespace-aware variant used for interactive evaluation from source
-buffers; uses `clojure.pprint/pprint' bounded by caller-supplied
-print caps).")
+Defines three wrappers in the `port.tooling' namespace:
+
+- `-eval' (used by `port-tooling-call'): the historical path.
+  Pr-str's the return value into `:val', so callers that just
+  want a printed string for display (e.g. `port-doc',
+  `port-source') get exactly what `pr-str' produces.
+
+- `-data-eval' (used by `port-tooling-call-data'): leaves the
+  return value unprinted, letting prepl's outer `prn' do a single
+  serialization pass.  Saves an entire EDN re-parse on the Elisp
+  side for tooling responses (completion, xref, eldoc, etc.)
+  whose payloads we'd just parse again with
+  `port-tooling-decode-val' under the old path.  Only safe for
+  forms whose result is EDN-readable; arbitrary Java objects
+  should go through `-eval'.
+
+- `-user-eval': the namespace-aware variant used for interactive
+  evaluation from source buffers; pretty-prints under
+  caller-supplied `*print-length*' / `*print-level*' caps.")
 
 (defun port-tooling-install (session)
   "Install the tool-socket handler on SESSION and send the bootstrap form."
@@ -103,8 +129,28 @@ when `:ok'), `:ex' (printed Throwable->map when `:err'),
 `:ex-message' (just the exception's message when `:err'), `:out',
 `:err'.  Returns the allocated request id so a sync caller can
 evict a stale callback on timeout."
+  (port-tooling--call session form-string callback "-eval"))
+
+(defun port-tooling-call-data (session form-string callback)
+  "Evaluate FORM-STRING on SESSION's tool socket, returning raw data.
+Like `port-tooling-call', but `:val' arrives already parsed into
+its Elisp representation rather than as a `pr-str''d string.
+Saves a full EDN re-parse on the Elisp side and avoids the
+escape-doubling that `pr-str' inflicts on nested strings; for the
+completion warm-up's ~100 KB ns-map response that's a 2-3x
+speedup.  Use this when FORM-STRING returns EDN-readable data
+\(vectors, maps, strings, keywords, numbers); use the plain
+`port-tooling-call' for forms whose result might be a Java object
+or anything else not safely round-trippable."
+  (port-tooling--call session form-string callback "-data-eval"))
+
+(defun port-tooling--call (session form-string callback wrapper)
+  "Common dispatch for `port-tooling-call' and `port-tooling-call-data'.
+WRAPPER is the unqualified Clojure function name (`-eval' or
+`-data-eval') to wrap FORM-STRING in before sending."
   (let* ((id (port-session-next-id! session))
-         (wrapped (format "(port.tooling/-eval %d (fn [] %s))" id form-string)))
+         (wrapped (format "(port.tooling/%s %d (fn [] %s))"
+                          wrapper id form-string)))
     (port-session-register-callback session id callback)
     (port-client-send (port-session-tool-conn session) wrapped)
     id))
@@ -137,12 +183,24 @@ FORM-STRING is the Clojure form.  TIMEOUT defaults to 2 seconds.
 Returns the result alist, or nil on timeout.  Suitable for use
 from a `completion-at-point-functions' member, where the
 surrounding API is synchronous."
+  (port-tooling--call-sync session form-string timeout #'port-tooling-call))
+
+(defun port-tooling-call-data-sync (session form-string &optional timeout)
+  "Blocking variant of `port-tooling-call-data'.
+Same semantics as `port-tooling-call-sync' but `:val' arrives as
+parsed data rather than a printed string.  Used by `port-xref'
+to drive the synchronous `xref-find-definitions' lookup."
+  (port-tooling--call-sync session form-string timeout
+                           #'port-tooling-call-data))
+
+(defun port-tooling--call-sync (session form-string timeout call-fn)
+  "Shared sync-call body.  CALL-FN is `port-tooling-call' or its data variant."
   (let* ((done nil)
          (result nil)
          (deadline (+ (float-time) (or timeout 2.0)))
          (proc (port-client-process (port-session-tool-conn session)))
-         (id (port-tooling-call session form-string
-                                (lambda (r) (setq result r) (setq done t)))))
+         (id (funcall call-fn session form-string
+                      (lambda (r) (setq result r) (setq done t)))))
     (while (and (not done) (< (float-time) deadline))
       (accept-process-output proc 0.05))
     (unless done

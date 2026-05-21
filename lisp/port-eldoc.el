@@ -227,13 +227,12 @@ shape, rendered verbatim)."
   (when port-default-session
     (when-let ((sym (port-eldoc--target)))
       (let ((arg-index (funcall port-eldoc-arg-index-function)))
-        (port-tooling-call
+        (port-tooling-call-data
          port-default-session
          (port-eldoc--query sym (port-eldoc--user-ns))
          (lambda (result)
            (when (eq (alist-get :tag result) :ok)
-             (let ((decoded (port-tooling-decode-val
-                             (alist-get :val result))))
+             (let ((decoded (alist-get :val result)))
                (when-let ((str (port-eldoc--format decoded arg-index)))
                  (funcall callback str
                           :thing sym

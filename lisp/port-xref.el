@@ -202,8 +202,8 @@ most `port-xref-definitions-timeout' seconds."
   (let* ((session (port-current-session))
          (ns      (port-session-current-ns session))
          (form    (port-xref--query identifier ns))
-         (result  (port-tooling-call-sync session form
-                                          port-xref-definitions-timeout)))
+         (result  (port-tooling-call-data-sync session form
+                                               port-xref-definitions-timeout)))
     (cond
      ((null result)
       (message "Port: definition lookup of %s timed out" identifier)
@@ -213,7 +213,7 @@ most `port-xref-definitions-timeout' seconds."
                identifier (or (alist-get :ex-message result) "unknown error"))
       nil)
      (t
-      (let ((decoded (port-tooling-decode-val (alist-get :val result))))
+      (let ((decoded (alist-get :val result)))
         (cond
          ((null decoded)
           nil)
@@ -240,8 +240,8 @@ larger `port-xref-apropos-timeout', since walking every loaded
 namespace can take seconds on a fat classpath."
   (let* ((session (port-current-session))
          (form    (port-xref--apropos-query pattern))
-         (result  (port-tooling-call-sync session form
-                                          port-xref-apropos-timeout)))
+         (result  (port-tooling-call-data-sync session form
+                                               port-xref-apropos-timeout)))
     (cond
      ((null result)
       (message "Port: apropos timed out (try a more specific pattern)")
@@ -251,7 +251,7 @@ namespace can take seconds on a fat classpath."
                (or (alist-get :ex-message result) "unknown error"))
       nil)
      (t
-      (let ((decoded (port-tooling-decode-val (alist-get :val result))))
+      (let ((decoded (alist-get :val result)))
         (when (listp decoded)
           (delq nil (mapcar #'port-xref--apropos-row->item decoded))))))))
 

@@ -9,6 +9,7 @@
 ### Changes
 
 - `*port-messages*` log entries are now printed via `prin1` instead of `pp` by default.  `pp` formatting was the actual culprit behind a recent reported Emacs hang while typing in the REPL: pretty-printing a 4000-entry completion warm-up response takes ~120ms; `prin1` takes ~6ms.  Set the new `port-log-pretty-print` defcustom to `t` to opt back in to multi-line readable output.
+- Tool-socket bootstrap now defines a second wrapper `port.tooling/-data-eval` alongside `-eval`.  The data variant skips the inner `pr-str` so prepl's outer print does a single serialization pass; the Elisp side then has parsed data directly in `:val` rather than a printed string that needs re-parsing.  Eliminates one full EDN round-trip per tooling call and the escape-doubling that bites long nested strings.  Completion, xref, eldoc, stacktrace, test, and Orchard probes have been migrated to the new path; `port-tooling-call` / `port-tooling-decode-val` are unchanged for display callers (`port-doc`, `port-source`, etc.).  Existing sessions need to reconnect to pick up the new bootstrap.
 
 ### New features
 

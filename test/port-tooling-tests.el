@@ -99,7 +99,15 @@
   (it "wires clojure.pprint into the -user-eval wrapper"
     (expect port-tooling-bootstrap :to-match "clojure\\.pprint")
     (expect port-tooling-bootstrap :to-match
-            "with-out-str (clojure\\.pprint/pprint v)")))
+            "with-out-str (clojure\\.pprint/pprint v)"))
+
+  (it "defines both -eval (printed val) and -data-eval (raw val)"
+    (expect port-tooling-bootstrap :to-match "defn -eval \\[id thunk\\]")
+    (expect port-tooling-bootstrap :to-match "defn -data-eval \\[id thunk\\]")
+    ;; The data variant must not pr-str its result; the printed
+    ;; variant must.  Both should still wrap stdout/stderr.
+    (expect port-tooling-bootstrap :to-match ":val (pr-str v)")
+    (expect port-tooling-bootstrap :to-match ":val v")))
 
 (describe "port-tooling--clj-int"
 

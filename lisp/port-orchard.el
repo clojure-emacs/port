@@ -196,7 +196,7 @@ swapped."
   (interactive)
   (unless port-default-session
     (user-error "Port: not connected"))
-  (port-tooling-call
+  (port-tooling-call-data
    port-default-session
    port-orchard--probe-form
    (lambda (result)
@@ -205,7 +205,7 @@ swapped."
        (message "Port: probe failed: %s"
                 (or (alist-get :ex-message result) "unknown error")))
       (t
-       (let* ((decoded (port-tooling-decode-val (alist-get :val result)))
+       (let* ((decoded (alist-get :val result))
               (enabled (and (consp decoded) (port-orchard--apply decoded))))
          (cond
           (enabled

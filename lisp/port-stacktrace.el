@@ -298,7 +298,7 @@ visits whatever the response describes.  Jar URLs with slurped
 with `port-find-definition' on the xref backend); `file:' URLs
 visit the underlying absolute path."
   (message "Port: resolving %s on the JVM..." file)
-  (port-tooling-call
+  (port-tooling-call-data
    port-default-session
    (format port-stacktrace-frame-form file file)
    (lambda (result)
@@ -307,7 +307,7 @@ visit the underlying absolute path."
        (message "Port: frame lookup of %s failed: %s"
                 file (or (alist-get :ex-message result) "unknown error")))
       (t
-       (let ((decoded (port-tooling-decode-val (alist-get :val result))))
+       (let ((decoded (alist-get :val result)))
          (cond
           ((null decoded)
            (message "Port: %s is not on the JVM's classpath" file))

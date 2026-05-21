@@ -236,7 +236,7 @@ when the response was an error.  An error result still pops the
 stacktrace buffer through the usual path."
   (let ((session (port-current-session)))
     (port-test--ensure-installed session)
-    (port-tooling-call
+    (port-tooling-call-data
      session form
      (lambda (result)
        (cond
@@ -246,7 +246,7 @@ stacktrace buffer through the usual path."
          (port-stacktrace-pop-from-result result)
          (funcall on-result nil))
         (t
-         (let ((decoded (port-tooling-decode-val (alist-get :val result))))
+         (let ((decoded (alist-get :val result)))
            (funcall on-result decoded))))))))
 
 
